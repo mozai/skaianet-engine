@@ -300,7 +300,7 @@ def getrandomsong():
     # could we use 'random_fresh_song' view in db?
     #   that view is based on time not # of songs
     #   and that view fails if entire library is <1 hour in length
-    cur = db.cursor(buffered=True)
+    cur = db.cursor(buffered=True, dictionary=True)
     recentlimit = config.recentlimit or 20
     cur.execute("SELECT l.id, l.filepath, l.title, l.artist, l.album, l.length, l.website "
                 "FROM (SELECT * FROM library WHERE autoplay = 1 "
@@ -311,9 +311,9 @@ def getrandomsong():
     result = cur.fetchone()
     cur.close()
     assert result  # should never be None
-    answer = {'id': result[0], 'filepath': result[1], 'title': result[2],
-              'artist': result[3], 'album': result[4], 'length': result[5],
-              'website': result[6], 'reqname': '', 'reqsrc': ''}
+    answer = result.copy()
+    answer['reqname'] = ''
+    answer['reqsrc'] = ''
     _dprint('getrandomsong() = {}'.format(repr(answer)))
     return answer
 
@@ -322,7 +322,7 @@ def getrequest():
     " returns song data for a valid request if any "
     answer = None
     while answer is None:
-        reqcursor = db.cursor()
+        reqcursor = db.cursor(dictionary=True)
         reqcursor.execute(
             "SELECT id,reqid,reqname,reqsrc FROM requests LIMIT 1")
         reqdata = reqcursor.fetchone()
@@ -331,21 +331,19 @@ def getrequest():
             break
         reqrmcursor = db.cursor()
         reqrmcursor.execute("DELETE FROM requests WHERE id=%(id)s",
-                            {'id': reqdata[0]})
+                            {'id': reqdata['id']})
         reqrmcursor.close()
-        libcursor = db.cursor()
+        libcursor = db.cursor(dictionary=True)
         libcursor.execute(
             "SELECT id, filepath, title, artist, album, length, "
             "website FROM library WHERE id=%(song)s LIMIT 1",
-            {'song': reqdata[1]})
+            {'song': reqdata['reqid']})
         libdata = libcursor.fetchone()
         libcursor.close()
         if libcursor:
-            answer = {
-                'id': libdata[0], 'filepath': libdata[1], 'title': libdata[2],
-                'artist': libdata[3], 'album': libdata[4],
-                'length': libdata[5], 'website': libdata[6],
-                'reqname': reqdata[2], 'reqsrc': reqdata[3]}
+            answer = libdata.copy()
+            answer['reqname'] = reqdata['reqname']
+            answer['reqsrc'] = reqdata['recsrc']
     _dprint('getrequest() = {}'.format(repr(answer)))
     return answer
 
