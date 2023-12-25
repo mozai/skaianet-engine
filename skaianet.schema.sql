@@ -1,8 +1,8 @@
--- MySQL dump 10.15  Distrib 10.0.33-MariaDB, for debian-linux-gnu (x86_64)
+-- MariaDB dump 10.19  Distrib 10.6.12-MariaDB, for debian-linux-gnu (x86_64)
 --
 -- Host: localhost    Database: skaianet
 -- ------------------------------------------------------
--- Server version	10.0.33-MariaDB-0ubuntu0.16.04.1
+-- Server version	10.6.12-MariaDB-0ubuntu0.22.04.1
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -31,7 +31,7 @@ CREATE TABLE `administrators` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_2` (`id`),
   KEY `id` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -43,20 +43,20 @@ DROP TABLE IF EXISTS `library`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `library` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `title` varchar(511) NOT NULL COMMENT 'Song title',
-  `artist` varchar(127) NOT NULL COMMENT 'Song performer',
-  `album` varchar(127) NOT NULL COMMENT 'album name',
-  `filepath` varchar(255) NOT NULL COMMENT 'absolute path on disk (for use by ices to feed icecast)',
-  `albumart` varchar(255) DEFAULT NULL COMMENT 'URL for listener to fetch display art (this is per-song not per-album)',
-  `autoplay` tinyint(1) NOT NULL DEFAULT '1' COMMENT 'ices will only add these songs if no request is made',
-  `requestable` tinyint(1) NOT NULL DEFAULT '1' COMMENT 'songs that can appear in the oh.php interface',
-  `mdchanged` tinyint(1) NOT NULL DEFAULT '0' COMMENT '(unknown)',
+  `title` varchar(191) NOT NULL COMMENT 'Song title',
+  `artist` varchar(191) NOT NULL COMMENT 'Song performer',
+  `album` varchar(191) NOT NULL COMMENT 'album name',
+  `filepath` varchar(191) NOT NULL COMMENT 'absolute path on disk (for use by ices to feed icecast)',
+  `albumart` varchar(191) DEFAULT NULL COMMENT 'URL for listener to fetch display art (this is per-song not per-album)',
+  `autoplay` tinyint(1) NOT NULL DEFAULT 1 COMMENT 'ices will only add these songs if no request is made',
+  `requestable` tinyint(1) NOT NULL DEFAULT 1 COMMENT 'songs that can appear in the oh.php interface',
   `length` int(11) DEFAULT NULL COMMENT 'song duration (in seconds)',
-  `website` varchar(255) DEFAULT NULL COMMENT 'URL for a listener to click if they wish to learn more about the song/artist (ie. bandcamp link)',
+  `website` varchar(191) DEFAULT NULL COMMENT 'URL for a listener to click if they wish to learn more about the song/artist (ie. bandcamp link)',
+  `last_played` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `filepath_UNIQUE` (`filepath`),
   KEY `i_autoplay` (`autoplay`)
-) ENGINE=InnoDB AUTO_INCREMENT=1980 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=2141 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -67,17 +67,38 @@ DROP TABLE IF EXISTS `most_recent`;
 /*!50001 DROP VIEW IF EXISTS `most_recent`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `most_recent` (
-  `id` tinyint NOT NULL,
-  `songid` tinyint NOT NULL,
-  `title` tinyint NOT NULL,
-  `artist` tinyint NOT NULL,
-  `album` tinyint NOT NULL,
-  `length` tinyint NOT NULL,
-  `reqname` tinyint NOT NULL,
-  `reqsrc` tinyint NOT NULL,
-  `time` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `most_recent` AS SELECT
+ 1 AS `recentid`,
+  1 AS `songid`,
+  1 AS `title`,
+  1 AS `artist`,
+  1 AS `album`,
+  1 AS `length`,
+  1 AS `reqname`,
+  1 AS `reqsrc`,
+  1 AS `time` */;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary table structure for view `random_christmas_song`
+--
+
+DROP TABLE IF EXISTS `random_christmas_song`;
+/*!50001 DROP VIEW IF EXISTS `random_christmas_song`*/;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8;
+/*!50001 CREATE VIEW `random_christmas_song` AS SELECT
+ 1 AS `id`,
+  1 AS `title`,
+  1 AS `artist`,
+  1 AS `album`,
+  1 AS `filepath`,
+  1 AS `albumart`,
+  1 AS `autoplay`,
+  1 AS `requestable`,
+  1 AS `length`,
+  1 AS `website`,
+  1 AS `last_played` */;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -88,19 +109,18 @@ DROP TABLE IF EXISTS `random_fresh_song`;
 /*!50001 DROP VIEW IF EXISTS `random_fresh_song`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `random_fresh_song` (
-  `id` tinyint NOT NULL,
-  `title` tinyint NOT NULL,
-  `artist` tinyint NOT NULL,
-  `album` tinyint NOT NULL,
-  `filepath` tinyint NOT NULL,
-  `albumart` tinyint NOT NULL,
-  `autoplay` tinyint NOT NULL,
-  `requestable` tinyint NOT NULL,
-  `mdchanged` tinyint NOT NULL,
-  `length` tinyint NOT NULL,
-  `website` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `random_fresh_song` AS SELECT
+ 1 AS `id`,
+  1 AS `title`,
+  1 AS `artist`,
+  1 AS `album`,
+  1 AS `filepath`,
+  1 AS `albumart`,
+  1 AS `autoplay`,
+  1 AS `requestable`,
+  1 AS `length`,
+  1 AS `website`,
+  1 AS `last_played` */;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -124,7 +144,7 @@ CREATE TABLE `recent` (
   PRIMARY KEY (`id`),
   KEY `i_time` (`time`),
   KEY `i_songid` (`songid`)
-) ENGINE=InnoDB AUTO_INCREMENT=533325 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1448233 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -139,10 +159,10 @@ CREATE TABLE `requests` (
   `reqid` int(11) NOT NULL,
   `reqname` varchar(1024) NOT NULL DEFAULT 'Anonymous' COMMENT 'Who asked',
   `reqsrc` varchar(1024) NOT NULL COMMENT 'library.id requested',
-  `override` tinyint(1) NOT NULL DEFAULT '0' COMMENT '(unknown)',
+  `override` tinyint(1) NOT NULL DEFAULT 0 COMMENT '(unknown)',
   PRIMARY KEY (`id`),
   KEY `id` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=65 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=3851 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -158,9 +178,9 @@ CREATE TABLE `settings` (
   `commercialrate` int(11) NOT NULL,
   `repeatcheckrate` int(11) NOT NULL,
   `notifytype` int(11) NOT NULL,
-  `notifytext` text NOT NULL,
+  `notifytext` mediumtext NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -171,27 +191,43 @@ DROP TABLE IF EXISTS `v_recent_max_time`;
 /*!50001 DROP VIEW IF EXISTS `v_recent_max_time`*/;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
-/*!50001 CREATE TABLE `v_recent_max_time` (
-  `songid` tinyint NOT NULL,
-  `time` tinyint NOT NULL
-) ENGINE=MyISAM */;
+/*!50001 CREATE VIEW `v_recent_max_time` AS SELECT
+ 1 AS `songid`,
+  1 AS `time` */;
 SET character_set_client = @saved_cs_client;
 
 --
 -- Final view structure for view `most_recent`
 --
 
-/*!50001 DROP TABLE IF EXISTS `most_recent`*/;
 /*!50001 DROP VIEW IF EXISTS `most_recent`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
 /*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8 */;
-/*!50001 SET character_set_results     = utf8 */;
-/*!50001 SET collation_connection      = utf8_general_ci */;
+/*!50001 SET character_set_client      = utf8mb3 */;
+/*!50001 SET character_set_results     = utf8mb3 */;
+/*!50001 SET collation_connection      = utf8mb3_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `most_recent` AS select `r1`.`id` AS `id`,`r1`.`songid` AS `songid`,`r1`.`title` AS `title`,`r1`.`artist` AS `artist`,`r1`.`album` AS `album`,`r1`.`length` AS `length`,`r1`.`reqname` AS `reqname`,`r1`.`reqsrc` AS `reqsrc`,`r1`.`time` AS `time` from (`recent` `r1` join `v_recent_max_time` `r2` on(((`r1`.`songid` = `r2`.`songid`) and (`r1`.`time` = `r2`.`time`)))) */;
+/*!50001 VIEW `most_recent` AS select `r1`.`id` AS `recentid`,`r1`.`songid` AS `songid`,`r1`.`title` AS `title`,`r1`.`artist` AS `artist`,`r1`.`album` AS `album`,`r1`.`length` AS `length`,`r1`.`reqname` AS `reqname`,`r1`.`reqsrc` AS `reqsrc`,`r1`.`time` AS `time` from (`recent` `r1` join `v_recent_max_time` `r2` on(`r1`.`songid` = `r2`.`songid` and `r1`.`time` = `r2`.`time`)) order by `r1`.`time` desc */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `random_christmas_song`
+--
+
+/*!50001 DROP VIEW IF EXISTS `random_christmas_song`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `random_christmas_song` AS select `library`.`id` AS `id`,`library`.`title` AS `title`,`library`.`artist` AS `artist`,`library`.`album` AS `album`,`library`.`filepath` AS `filepath`,`library`.`albumart` AS `albumart`,`library`.`autoplay` AS `autoplay`,`library`.`requestable` AS `requestable`,`library`.`length` AS `length`,`library`.`website` AS `website`,`library`.`last_played` AS `last_played` from `library` where `library`.`autoplay` = 1 and (`library`.`album` = 'Homestuck for the Holidays' or `library`.`title` like '%hristmas%') order by rand() limit 1 */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -200,17 +236,16 @@ SET character_set_client = @saved_cs_client;
 -- Final view structure for view `random_fresh_song`
 --
 
-/*!50001 DROP TABLE IF EXISTS `random_fresh_song`*/;
 /*!50001 DROP VIEW IF EXISTS `random_fresh_song`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
 /*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8 */;
-/*!50001 SET character_set_results     = utf8 */;
-/*!50001 SET collation_connection      = utf8_general_ci */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `random_fresh_song` AS (select `library`.`id` AS `id`,`library`.`title` AS `title`,`library`.`artist` AS `artist`,`library`.`album` AS `album`,`library`.`filepath` AS `filepath`,`library`.`albumart` AS `albumart`,`library`.`autoplay` AS `autoplay`,`library`.`requestable` AS `requestable`,`library`.`mdchanged` AS `mdchanged`,`library`.`length` AS `length`,`library`.`website` AS `website` from `library` where ((`library`.`autoplay` = 1) and (not(`library`.`id` in (select `recent`.`songid` from `recent` where (`recent`.`time` > (now() - interval 1 hour)))))) order by rand() limit 1) */;
+/*!50001 VIEW `random_fresh_song` AS select `subquery`.`id` AS `id`,`subquery`.`title` AS `title`,`subquery`.`artist` AS `artist`,`subquery`.`album` AS `album`,`subquery`.`filepath` AS `filepath`,`subquery`.`albumart` AS `albumart`,`subquery`.`autoplay` AS `autoplay`,`subquery`.`requestable` AS `requestable`,`subquery`.`length` AS `length`,`subquery`.`website` AS `website`,`subquery`.`last_played` AS `last_played` from (select `library`.`id` AS `id`,`library`.`title` AS `title`,`library`.`artist` AS `artist`,`library`.`album` AS `album`,`library`.`filepath` AS `filepath`,`library`.`albumart` AS `albumart`,`library`.`autoplay` AS `autoplay`,`library`.`requestable` AS `requestable`,`library`.`length` AS `length`,`library`.`website` AS `website`,`library`.`last_played` AS `last_played` from `library` where `library`.`autoplay` = 1 order by rand() limit 20) `subquery` order by `subquery`.`last_played` limit 1 */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -219,14 +254,13 @@ SET character_set_client = @saved_cs_client;
 -- Final view structure for view `v_recent_max_time`
 --
 
-/*!50001 DROP TABLE IF EXISTS `v_recent_max_time`*/;
 /*!50001 DROP VIEW IF EXISTS `v_recent_max_time`*/;
 /*!50001 SET @saved_cs_client          = @@character_set_client */;
 /*!50001 SET @saved_cs_results         = @@character_set_results */;
 /*!50001 SET @saved_col_connection     = @@collation_connection */;
-/*!50001 SET character_set_client      = utf8 */;
-/*!50001 SET character_set_results     = utf8 */;
-/*!50001 SET collation_connection      = utf8_general_ci */;
+/*!50001 SET character_set_client      = utf8mb3 */;
+/*!50001 SET character_set_results     = utf8mb3 */;
+/*!50001 SET collation_connection      = utf8mb3_general_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
 /*!50001 VIEW `v_recent_max_time` AS select `recent`.`songid` AS `songid`,max(`recent`.`time`) AS `time` from `recent` group by `recent`.`songid` */;
@@ -243,4 +277,4 @@ SET character_set_client = @saved_cs_client;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2018-03-26  3:46:33
+-- Dump completed on 2023-05-07  6:42:46
