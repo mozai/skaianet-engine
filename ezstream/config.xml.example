@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ezstream>
+
+  <decoders>
+    <decoder>
+      <!-- Decoder name -->
+      <name>OggDec</name>
+      <!-- Program and options -->
+      <program>oggdec -R -b 16 -o - @T@</program>
+      <!-- File extensions to use this decoder for -->
+      <file_ext>.ogg</file_ext> <file_ext>.OGG</file_ext>
+      <file_ext>.oga</file_ext> <file_ext>.OGA</file_ext>
+    </decoder>
+    <decoder>
+       <name>ffmpeg-audio</name>
+       <program>ffmpeg -loglevel error -i @T@ -vn -c:a pcm_s16le -f s16le pipe:</program>
+       <file_ext>.mp3</file_ext> <file_ext>.MP3</file_ext>
+    </decoder>
+    <decoder>
+      <name>Flac</name>
+      <program>flac -s -d --force-raw-format --sign=signed --endian=little -o - @T@</program>
+      <file_ext>.flac</file_ext> <file_ext>.FLAC</file_ext>
+    </decoder>
+    <decoder>
+      <name>AAC</name>
+      <program>faad -d -f 2 -w @T@</program>
+      <file_ext>.m4a</file_ext> <file_ext>.M4A</file_ext>
+      <file_ext>.aac</file_ext> <file_ext>.AAC</file_ext>
+    </decoder>
+    <decoder>
+      <name>Opus</name>
+      <program>opusdec --rate 44100 @T@ -</program>
+      <file_ext>.opus</file_ext> <file_ext>.OPUS</file_ext>
+    </decoder>
+  </decoders>
+
+  <encoders>
+    <encoder>
+      <name>Lame-CBR128</name>
+      <format>MP3</format>
+      <program>lame --quiet --preset cbr 128 -r -s 44.1 --bitwidth 16 - -</program>
+    </encoder>
+    <!-- why does the ffmpeg program below play at half speed? -->
+    <!-- <encoder>
+      <name>ffmpeg-mp3</name>
+      <format>MP3</format>
+      <program>ffmpeg -f s16le -c:a pcm_s16le -i pipe: -vn -c:a mp3 -b:a 128 -r 44100 -f mp3 pipe:</program>
+    </encoder> -->
+  </encoders>
+
+  <servers>
+    <server>
+      <name>localicecast</name>
+      <!-- Shoutcast servers need "icy", icecast 1.x needs "xaudiocast", and icecast 2.x needs "http". -->
+      <protocol>HTTP</protocol>
+      <hostname>127.0.0.1</hostname>
+      <port>8000</port>
+      <user>source</user>
+      <password>[[redacted]]</password>
+      <reconnect_attempts>10</reconnect_attempts>
+      <tls>none</tls>
+    </server>
+  </servers>
+
+  <intakes>
+    <intake>
+      <name>theintake</name>
+      <type>program</type>
+      <filename>/home/radio/engine/ezstream/getnext.py</filename>
+      <shuffle>No</shuffle>
+      <stream_once>No</stream_once>
+    </intake>
+  </intakes>
+
+  <metadata>
+    <!-- Program to query for metadata instead of from media files -->
+    <!-- <program>/home/radio/engine/ezstream/getmeta.py</program> -->
+    <!-- Metadata format -->
+    <format_str>@a@ - @t@</format_str>
+    <!-- Interval for additional metadata refreshes (default: -1 (none)) -->
+    <refresh_interval>-1</refresh_interval>
+    <!-- Setting to clean up extraneous whitespace (default: no) -->
+    <normalize_strings>Yes</normalize_strings>
+    <!-- Setting to suppress all metadata udpates (default: no) -->
+    <!-- <no_updates>Yes</no_updates> -->
+  </metadata>
+
+
+  <streams>
+    <stream>
+      <name>default</name>
+      <mountpoint>/radio.mp3</mountpoint>
+      <intake>theintake</intake>
+      <server>localicecast</server>
+      <public>No</public>
+      <!-- Stream format: Ogg, MP3, WebM, Matroska -->
+      <format>MP3</format>
+      <encoder>Lame-CBR128</encoder>
+      <stream_name>Skaianet</stream_name>
+      <stream_url>https://radio.skaia.net/</stream_url>
+      <stream_genre>Game</stream_genre>
+      <stream_description>Skaianet Radio</stream_description>
+      <stream_bitrate>128</stream_bitrate>
+    </stream>
+  </streams>
+
+</ezstream>
+

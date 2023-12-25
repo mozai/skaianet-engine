@@ -1,6 +1,8 @@
+#!/usr/bin/env python2
 ###
 # Copyright (c) 2015, George Burfeind (Kitty)
 # All rights reserved.
+# changes made by Moses "Mozai" Moore
 #
 # This file is part of skaianet-engine.
 #
@@ -18,6 +20,7 @@
 # along with skaianet-engine.  If not, see <http://www.gnu.org/licenses/>.
 ###
 # -- ices (v0.2) USES PYTHON2.7 NOT PYTHON3 -- #
+from __future__ import print_function
 import skaianet
 import json
 import os
@@ -58,7 +61,8 @@ def ices_shutdown():
 def _ices_get_stats(stream=None):
     " ask icecast daemon for status. can specify a stream by mountpoint "
     if stream:
-        req = Request('http://localhost:8000/status-json.xsl?mount={}'.format(stream))
+        req = Request(
+            'http://localhost:8000/status-json.xsl?mount={}'.format(stream))
     else:
         req = Request('http://localhost:8000/status-json.xsl')
     try:
@@ -78,17 +82,23 @@ def ices_get_next():
     """
     global JINGLE_LASTTIME
     global CURRENTMP3
+    CURRENTMP3 = None
     now = time.gmtime()
     if JINGLES_PLAY and ((now - JINGLE_LASTTIME) > JINGLE_INTERVAL):
         CURRENTMP3 = skaianet.getjingle()
+    if CURRENTMP3:
         JINGLE_LASTTIME = now
-        fullpath = os.path.join(skaianet.config.jinglepath, CURRENTMP3['filepath'])
-    elif skaianet.requestqueued():
-        CURRENTMP3 = skaianet.getrequest()
-        fullpath = os.path.join(skaianet.config.librarypath, CURRENTMP3['filepath'])
-    else:
+        fullpath = os.path.join(
+            skaianet.config.jinglepath, CURRENTMP3['filepath'])
+        # don't add this to set-playing nor recently playing list
+        return '{}'.format(fullpath)
+    CURRENTMP3 = skaianet.getrequest()
+    if not CURRENTMP3:
         CURRENTMP3 = skaianet.getrandomsong()
-        fullpath = os.path.join(skaianet.config.librarypath, CURRENTMP3['filepath'])
+    if not CURRENTMP3:
+        raise Exception('Error: both getrequest() and getrandomsong() failed')
+    fullpath = os.path.join(skaianet.config.librarypath,
+                            CURRENTMP3['filepath'])
     icestats = _ices_get_stats()
     listencount = None
     if 'source' in icestats:
@@ -106,17 +116,20 @@ def ices_get_next():
         CURRENTMP3["reqsrc"],
         listencount)
     skaianet._dprint('ices_get_next() = {}'.format(fullpath))
-    return '{}'.format(fullpath)  # if I use just "return fullpath" ices says "playlist empty" ???
+    # if I use just "return fullpath" ices says "playlist empty" ???
+    return '{}'.format(fullpath)
 
 
 def ices_get_metadata():
     " returns a string to use instead of inspecting metadata of mp3 file "
+    # this is so info in the database can override what's in the mp3 file
     mdstring = '{artist} - {title}'.format(**CURRENTMP3)
     skaianet._dprint('ices_get_metadata() = {}'.format(mdstring))
     return mdstring
 
+
 if __name__ == '__main__':
-    # test mode
+    # test mode. Unit testing would be nice
     skaianet.setplaying = lambda *args, **kwargs: False
     skaianet.config.debug = True
     ices_init()

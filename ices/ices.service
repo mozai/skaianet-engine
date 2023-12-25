@@ -1,0 +1,15 @@
+[Unit]
+Description=ices Radio Streamer
+After=network.target
+After=icecast.service
+
+[Service]
+User=radio
+Type=simple
+WorkingDirectory=/srv/radio/engine/ices
+ExecStart=/usr/local/bin/ices -c ices.conf
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+

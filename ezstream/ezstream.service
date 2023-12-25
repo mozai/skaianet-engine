@@ -1,0 +1,18 @@
+[Unit]
+Description=ezstream Radio Streamer
+After=network.target
+After=icecast.service
+
+[Service]
+User=radio
+Type=simple
+WorkingDirectory=/srv/radio/engine/ezstream
+ExecStart=/usr/bin/ezsteam -c "config.xml"
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+# this file is for systemd
+# copy it to /etc/systemd/system
+# then `systemctl enable ezstream; systemctl start ezstream`
