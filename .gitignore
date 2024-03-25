@@ -1,5 +1,6 @@
 # Wow. :)
 *.pyc
 config.py
+config.ini
 ices/ices.conf
 ezstream/config.xml
