@@ -39,6 +39,8 @@ def get_next():
     " what do I play next? "
     now = time.gmtime()
     nextsong = None
+    jinglepath = skaianet.CONFIG["library.paths"].get("jingles")
+    musicpath = skaianet.CONFIG["library.paths"].get("music")
     if JINGLES_PLAY:
         # get jingle_lasttime
         jingle_lasttime = now  # QUACK blocks all jingles
@@ -46,16 +48,14 @@ def get_next():
             nextsong = skaianet.getjingle()
         if nextsong:
             # set jingle_lasttime
-            fullpath = os.path.join(
-                skaianet.config.jinglepath, nextsong['filepath'])
-            return "{fullpath}"
+            return os.path.join(jinglepath, nextsong['filepath'])
     if not nextsong:
         nextsong = skaianet.getrequest()
     if not nextsong:
         nextsong = skaianet.getrandomsong()
     if not nextsong:
         raise Exception('Error: both getrequest() and getrandomsong() failed')
-    fullpath = os.path.join(skaianet.config.librarypath, nextsong['filepath'])
+    fullpath = os.path.join(musicpath, nextsong['filepath'])
     # measure how many listeners when the song started
     icestats = _ices_get_stats()
     listencount = None
@@ -73,7 +73,6 @@ def get_next():
 
 def main():
     " :33 < *ac drops a new song from her mouths for you* "
-    # skaianet.setplaying = lambda *args, **kwargs: False  # DEBUG
     skaianet.initdb()
     nextsong = get_next()
     print(f"{nextsong}")
