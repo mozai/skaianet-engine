@@ -1,29 +1,15 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 " heart of skaianet python code "
-## ICES 0.4 USES PYTHON2 NOT PYTHON3 ##
 ###
-# Copyright (c) 2015, George Burfeind (Kitty)
-# All rights reserved.
-#
-# This file is part of skaianet-engine.
-#
-# skaianet-engine is free software: you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# skaianet-engine is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with skaianet-engine.  If not, see <http://www.gnu.org/licenses/>.
+# original version bears a copyright by George "Kitty" Burfeind
+# and a statement that it is shared for public use as per
+# the GNU General Public License v3 <http://www.gnu.org/licenses/>
+# ... which means all derivative works must bear the same license for use.
 ###
 
 # TODO: turn off database commits so we can test the set*() methods
-from __future__ import print_function  # because ices still uses python 2.x
 from collections import defaultdict
+import configparser
 import datetime
 import os
 import random
@@ -31,17 +17,21 @@ import re
 import time
 import mutagen
 import mysql.connector
-import config
 
 # global var for the database connection
 DBCONN = None
+
+# global to hold config settings
+CONFIG = configparser.ConfigParser()
+CONFIG.read("/home/radio/engine/config.ini")
+
 
 def _dprint(msg):
     """ Print a debug line.
     This is a simple function.  If I got any more meta, I'd be telling
     you about how this is a docstring.
     """
-    if config.debug:
+    if CONFIG["engine"].get("debug"):
         print(datetime.datetime.now().strftime("[%H:%M:%S] ") + msg)
 
 
@@ -52,11 +42,11 @@ def initdb(autocommit=True):
     ** SHOULD check for proper schema, but does not.
     """
     global DBCONN
-    _dprint("initdb(commit={})".format(autocommit))
-    DBCONN = mysql.connector.connect(user=config.dbuser,
-                                 password=config.dbpass,
-                                 database=config.dbname,
-                                 autocommit=autocommit)
+    _dprint(f"initdb(commit={autocommit})")
+    DBCONN = mysql.connector.connect(user=CONFIG["db.mysql"]["dbuser"],
+                                     password=CONFIG["db.mysql"]["dbpass"],
+                                     database=CONFIG["db.mysql"]["dbname"],
+                                     autocommit=autocommit)
     # FIXME: should verify schema to make sure it matches expectations
     return DBCONN
 
@@ -65,26 +55,27 @@ def closedb(commit=True):
     """ Ensures all changes are saved before closing the database.
     Should be called only when all DB actions are done.
     """
-    _dprint('closedb(commit={})'.format(commit))
+    _dprint(f"closedb(commit={commit})")
     if commit:
-        _dprint('  Saving changes to database')
+        _dprint("  Saving changes to database")
         DBCONN.commit()
     else:
-        _dprint('  Rolling back any changes')
+        _dprint("  Rolling back any changes")
         DBCONN.rollback()   # .close() without .commit() should already do this
     DBCONN.close()
 
 
 def _checklibraryfiles(commit=False):
     # for each file on disk, do we have a row in library table?
-    _dprint('_checklibrary(commit={})'.format(commit))
+    _dprint(f"_checklibrary(commit={commit})")
     suggestions = []
-    for root, _, files in os.walk(config.librarypath):
+    librarypath = CONFIG["library.paths"].get("music")
+    for root, _, files in os.walk(librarypath):
         for fname in files:
             if not (fname.endswith(".mp3") or fname.endswith(".ogg")):
                 continue
             fullpath = os.path.join(root, fname)
-            shortpath = fullpath.replace(config.librarypath, '')
+            shortpath = fullpath.replace(librarypath, '')
             cur = DBCONN.cursor()
             sql = "SELECT id FROM library WHERE filepath = %(fullpath)s or filepath = %(shortpath)s LIMIT 1"
             cur.execute(sql, {'fullpath': fullpath, 'shortpath': shortpath})
@@ -92,9 +83,9 @@ def _checklibraryfiles(commit=False):
             cur.close()
             if found:
                 continue
-            suggestions.append('new file: {}'.format(shortpath))
+            suggestions.append(f"new file: {shortpath}")
             if commit:
-                _dprint('  adding {}'.format(shortpath))
+                _dprint(f"  adding {shortpath}")
                 _addsongtodb(fullpath)
     return suggestions
 
@@ -105,13 +96,14 @@ def _checklibrarytable(commit=False):
     mp3libcursor = DBCONN.cursor(dictionary=True)
     mp3libcursor.execute(
         "SELECT id, filepath FROM library WHERE autoplay = 1 or requestable = 1 ORDER BY filepath;")
+    librarypath = CONFIG["library.paths"].get("music")
     for row in mp3libcursor.fetchall():
-        fullpath = os.path.join(config.librarypath, row['filepath'])
+        fullpath = os.path.join(librarypath, row['filepath'])
         if os.path.isfile(fullpath):
             continue
-        suggestions.append('missing file: {}'.format(fullpath))
+        suggestions.append(f"missing file: {fullpath}")
         if commit:
-            _dprint('  removing {}'.format(row['filepath']))
+            _dprint(f"  removing {fullpath}")
             _rmsongfromdb(row['id'])
     mp3libcursor.close()
     return suggestions
@@ -139,8 +131,9 @@ def _addsongtodb(path):
     songmeta = getsongmeta(path)
     # { 'album', 'artist', 'title', 'track', 'length', 'website' }
     # TODO: what if some of the songmeta is missing/empty ?
-    if path.startswith(config.librarypath):
-        songmeta['filepath'] = path.replace(config.librarypath, '')
+    librarypath = CONFIG["library.paths"].get("music")
+    if path.startswith(librarypath):
+        songmeta['filepath'] = path.replace(librarypath, '')
     else:
         songmeta['filepath'] = path
     cur = DBCONN.cursor()
@@ -150,19 +143,18 @@ def _addsongtodb(path):
     cur.close()
     cur = DBCONN.cursor()
     if found:
-        _dprint('_addsongtodb(\"{}\") Updating: '.format(path))
+        _dprint(f"_addsongtodb(\"{path}\") Updating: ")
         songmeta['id'] = found[0]
         sql = "UPDATE library SET album = %(album)s, " \
               "artist = %(artist)s, length = %(length)s, " \
               "title = %(title)s, website = %(website)s " \
               "WHERE id = %(id)s"
     else:
-        _dprint('_addsongtodb(\"{}\") Inserting: '.format(path))
+        _dprint("_addsongtodb(\"{path}\") Inserting: ")
         sql = "INSERT INTO library " \
               "(title, artist, album, length, website, filepath) " \
               "VALUES (%(title)s, %(artist)s, %(album)s, %(length)s, %(website)s, %(filepath)s)"
-    _dprint(
-        '  Title: {title} :: Artist: {artist} :: Album: {album}'.format(**songmeta))
+    _dprint(f"""  Title: {songmeta["title"]} :: Artist: {songmeta["artist"]} :: Album: {songmeta["album"]}""")
     cur.execute(sql, songmeta)
     cur.close()
     cur = DBCONN.cursor()
@@ -178,7 +170,7 @@ def _rmsongfromdb(idnum):
     Takes the ID number assigned to a song's database entry and removes
     it from the database.
     """
-    _dprint("_rmsongfromdb(\"{}\")".format(idnum))
+    _dprint(f"_rmsongfromdb(\"{idnum}\")")
     removecursor = DBCONN.cursor()
     # don't delete, because library.id is a foreign key to other tables
     # removecursor.execute("DELETE FROM library WHERE id=%(id)s", {'id': idnum})
@@ -197,8 +189,7 @@ def setplaying(songid, title, artist, album, length,
     and optiononally, how many people are listening right now.
     """
     # TODO: we could get title, artist, album, length from library table or jingle table
-    _dprint(u'setplaying({}, "{}", "{}", "{}", {}, "{}", "{}", {})'.format(
-        songid, title, artist, album, length, reqname, reqsrc, listeners))
+    _dprint(f"""setplaying({songid}, "{title}", "{artist}", "{album}", {length}, "{reqname}", "{reqsrc}", {listeners})""")
     setcursor = DBCONN.cursor()
     query = "INSERT INTO recent (songid, title, artist, album, length, reqname, reqsrc, time, listeners) " \
         "VALUES (%(songid)s, %(title)s, %(artist)s, %(album)s, %(length)s, %(reqname)s, %(reqsrc)s, CURRENT_TIMESTAMP(), %(listeners)s)"
@@ -275,6 +266,7 @@ def _extract_a_url_from_mutagen(mutagenf):
         return _extract_a_url_from_mutagen_mp3(mutagenf)
     return None
 
+
 def getsongmeta(path):
     """ given filename, return metadata from that file
     for use in inserting/updating rows in the library table
@@ -300,13 +292,13 @@ def getsongmeta(path):
         answer['website'] = _extract_a_url_from_mutagen(i)
     else:
         # TODO: how to analyze other audio/* file types
-        raise Exception('unrecognized file type: {}'.format(path))
+        raise Exception(f"unrecognized file type: {path}")
     for i in list(answer.keys()):
         if answer[i] == '':
             del(answer[i])
     answer['filename'] = os.path.basename(path)
     answer['filepath'] = path
-    _dprint('getsongmeta("{}") = {}'.format(path, repr(answer)))
+    _dprint(f"""getsongmeta("{path}") = {answer}""")
     return answer
 
 
@@ -318,7 +310,7 @@ def getrandomsong():
 
     # actually returns the last-recently-played song of recentlimit + 1
     cur = DBCONN.cursor(buffered=True, dictionary=True)
-    #recentlimit = config.recentlimit or 20
+    #recentlimit = CONFIG["engine"].get("recentlimit") or 20
     now = time.gmtime()
     if (now.tm_mon == 12 and now.tm_mday > 14 and random.random() < 0.334):
         # it's around christmas, play the christmas songs more often
@@ -326,7 +318,7 @@ def getrandomsong():
         # create or replace view random_christmas_song AS select * from library where autoplay = 1 AND (album = "Homestuck for the Holidays" OR title like "%hristmas%") order by rand() limit 1;
         cur.execute("SELECT * FROM random_christmas_song")
     else:
-        #cur.execute("SELECT l.* FROM (SELECT * FROM library WHERE autoplay = 1 ORDER BY rand() LIMIT %(range)s) l "
+        # cur.execute("SELECT l.* FROM (SELECT * FROM library WHERE autoplay = 1 ORDER BY rand() LIMIT %(range)s) l "
         #            "LEFT JOIN recent ON l.id = recent.songid ORDER BY recent.time ASC LIMIT 1",
         #            {'range': recentlimit + 1})
         # create or replace view `random_fresh_song` AS select * from library where autoplay = 1 and not id in (select songid from recent where time > current_timestamp() - interval 1 hour) order by rand() limit 1;
@@ -338,7 +330,7 @@ def getrandomsong():
     answer = result.copy()
     answer['reqname'] = ''
     answer['reqsrc'] = ''
-    _dprint('getrandomsong() = {}'.format(repr(answer)))
+    _dprint(f"getrandomsong() = {answer}")
     return answer
 
 
@@ -368,7 +360,7 @@ def getrequest():
             answer = libdata.copy()
             answer['reqname'] = reqdata['reqname']
             answer['reqsrc'] = reqdata['reqsrc']
-    _dprint('getrequest() = {}'.format(repr(answer)))
+    _dprint("getrequest() = {answer}")
     return answer
 
 
@@ -376,43 +368,39 @@ def getjingle():
     " summon a random jingle soundfile from the library "
     # TODO: jingles should also be in the database, as a separate table like 'library'
     jinglelist = []
-    for _, _, files in os.walk(config.jinglepath):
+    jinglepath = CONFIG["library.paths"].get("jingles")
+    for _, _, files in os.walk(jinglepath):
         for file in files:
             if file.endswith(".mp3"):
                 jinglelist.append(file)
-    jinglepath = config.jinglepath + random.choice(jinglelist)
+    jinglepath = os.path.join(jinglepath, random.choice(jinglelist))
     jinglemeta = getsongmeta(jinglepath)
     answer = {'id': 0, 'filepath': jinglepath, 'title': 'Advertisement',
               'artist': 'Advertisement', 'album': 'Advertisement',
               'length': jinglemeta['length'], 'website': '',
               'reqname': '', 'reqsrc': ''}
-    _dprint('getjingle() = {}'.format(repr(answer)))
+    _dprint(f"getjingle() = {answer}")
     return answer
 
 
-def getsetting(name, idnum=1):
+def getsetting(name):
     " update the entries in table settings "
-    if name not in ('name', 'commercialrate', 'repeatcheckrate', 'notifytext'):
-        raise ValueError('unexpected setting name "{}"'.format(name))
     cur = DBCONN.cursor(buffered=True)
-    sql = "SELECT {} FROM settings WHERE id=%(id)s".format(name)
-    data = {'id': idnum}
+    sql = f"SELECT value FROM settings WHERE name=%(name)s"
+    data = {'name': name}
     cur.execute(sql, data)
     row = cur.fetchone()
     cur.close()
     answer = row[0]
-    _dprint('getsetting("{}", {}) = {}'.format(name, idnum, repr(answer)))
+    _dprint(f"""getsetting("{name}") = {answer}""")
     return answer
 
 
-def setsetting(name, value, idnum=1):
+def setsetting(name, value):
     " update the entries in table settings "
-    _dprint('setsetting("{}", "{}", {})'.format(name, value, idnum))
-    if name not in ('commercialrate', 'repeatcheckrate', 'notifytext'):
-        raise ValueError('unexpected setting name "{}"'.format(name))
+    _dprint(f"""setsetting("{name}", "{value}")""")
     reqcursor = DBCONN.cursor()
-    reqcursor.execute("UPDATE settings SET {} = %(v)s where id=%(id)s".format(
-        name), {'v': value, 'id': idnum})
+    reqcursor.execute(f"INSERT INTO settings (name, value) VALUES (%(n)s, %(v)s) ON DUPLICATE KEY UPDATE value = %(v)s", {'n': name, 'v': value})
     reqcursor.close()
 
 
@@ -420,29 +408,29 @@ def _test():
     " if launched from command line, run tests "
     print("*** testing skaianet module")
     # TODO: make sure we turn off database commits so we can test the set*() methods
-    config.debug = True
+    CONFIG["engine"]["debug"] = "true"
     initdb(autocommit=False)
     suggestions = checkdb(commit=False)
-    print("checkdb() suggestion count: {}".format(len(suggestions)))
+    print(f"checkdb() suggestion count: {len(suggestions)}")
     # next three write to the db, bad idea during a test
     # idnum = _addsongtodb(example.mp3)
     # _rmsongfromdb(idnum)
     # setplaying(idnum,  bluh bluh)
     song = getrandomsong()
-    print("getrandomsong(): {}".format(song))
-    songfile = os.path.join(config.librarypath, song['filepath'])
+    print(f"getrandomsong(): {song}")
+    songfile = os.path.join(CONFIG["library.paths"]["music"], song['filepath'])
     stuff = getsongmeta(songfile)
-    print("getsongmeta({}): {}".format(songfile, stuff))
+    print(f"getsongmeta({songfile}): {stuff}")
     stuff = _extract_a_url_from_mutagen(mutagen.File(songfile))
-    print("_extract_a_url_from_mutagen({}): {}".format(songfile, stuff))
+    print(f"_extract_a_url_from_mutagen({songfile}): {stuff}")
     stuff = requestqueued()
-    print("requestqueued(): {}".format(stuff))
+    print(f"requestqueued(): {stuff}")
     stuff = getrequest()
-    print("getrequest(): {}".format(stuff))
+    print(f"getrequest(): {stuff}")
     stuff = getjingle()
-    print("getjinvle(): {}".format(stuff))
+    print(f"getjingle(): {stuff}")
     stuff = getsetting("notifytext")
-    print("getsetting(notifytext): {}".format(stuff))
+    print(f"getsetting(notifytext): {stuff}")
     # setsetting('name', 'Skaianet Radio')
     closedb(commit=False)
 

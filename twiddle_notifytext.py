@@ -23,8 +23,9 @@ MESSAGES = [
     'EB: Oh boy! More great tunes!',
     'TT: Music that is not at all suspicious',
     'TG: okay these tracks arent terrible',
-    'GG: Yaaaaay more music! :D'
+    'GG: Yaaaaay more music! :D',
 
+    'I WARNED YOU ABOUT TUNES BRO'
 ]
 
 
@@ -34,7 +35,7 @@ def cleanse(i):
 
 
 if sys.stdin.isatty():
-    skaianet.config.debug = True
+    skaianet.CONFIG["engine"]["debug"] = "True"
 skaianet.initdb()
 random.shuffle(MESSAGES)
 oldmessage = skaianet.getsetting('notifytext')
