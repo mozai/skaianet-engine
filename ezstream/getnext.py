@@ -2,7 +2,6 @@
 " for ezstream, fetch next song to play and update state in database "
 # TODO: rewrite this in something faster like golang
 #       but then I'm not using skaianet.py anymore, hrm.
-# there could be a get_metadata.sh but ezstream should sense it for .mp3 files
 
 import os
 import sys
@@ -11,7 +10,6 @@ import requests
 sys.path.append('/srv/radio/engine')
 import skaianet
 
-# TODO: need to save "last bumper played" state in database
 # do we play station identification?
 JINGLES_PLAY = False
 # if it's been this many seconds, play another stn id
@@ -39,15 +37,15 @@ def get_next():
     " what do I play next? "
     now = time.gmtime()
     nextsong = None
-    jinglepath = skaianet.CONFIG["library.paths"].get("jingles")
-    musicpath = skaianet.CONFIG["library.paths"].get("music")
-    if JINGLES_PLAY:
-        # get jingle_lasttime
-        jingle_lasttime = now  # QUACK blocks all jingles
+    jinglepath = skaianet.config["library.paths"].get("jingles")
+    musicpath = skaianet.config["library.paths"].get("music")
+    if JINGLES_PLAY and (JINGLES_INTERVAL > 60):
+        jingle_lasttime = now  # QUACK if you don't have a real value jingles never play
+        # TODO jingle_lasttime = skaianet.getlastjingletime()
         if (now - jingle_lasttime) > JINGLES_INTERVAL:
             nextsong = skaianet.getjingle()
         if nextsong:
-            # set jingle_lasttime
+            skaianet.setplaying(nextsong["id"], None, None, 0, jingle=True)
             return os.path.join(jinglepath, nextsong['filepath'])
     if not nextsong:
         nextsong = skaianet.getrequest()
@@ -65,9 +63,7 @@ def get_next():
         elif isinstance(icestats['source'], list):
             listencount = icestats['source'][0]['listeners']
     # update nowplaying state in db
-    skaianet.setplaying(nextsong["id"], nextsong["title"],
-                        nextsong["artist"], nextsong["album"], nextsong["length"],
-                        nextsong["reqname"], nextsong["reqsrc"], listencount)
+    skaianet.setplaying(nextsong["id"], nextsong["reqname"], nextsong["reqsrc"], listencount)
     return f"{fullpath}"
 
 

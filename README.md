@@ -1,29 +1,30 @@
 # skaianet-engine
 
-This is a set of python2 scripts designed for maintaining a library
-of music and publishing the music to an icecast streaming media service.
-It can accept requests from listeners, ~~and station-identification jingles
-at intervals.~~
+This is software for a library of music and publishing the music to an
+icecast streaming media service.
+It can accept requests from listeners and have seasonal preferences
+for music selection.
 
-This doesn't have a UI, this is the back-end.  Check out
+**This part also out-of-date** Moved to html+vanillajavascript+api
+instead of jquery+PHP .
+~~This doesn't have a UI, this is the back-end.  Check out
 [skaianet-web](https://github.com/skaianet-radio/skaianet-web) for the
-user-facing stuff.
+user-facing stuff.~~
 
 
 ## TODO
 
-* finish updating to Python 3.x
 * better Setup instructions
-* move from mysql to sqlite3
 * re-add the station-identification jingles feature
-
+* merge the webui parts into this because why would
+  not use that with this?
 
 ## Requirements
 
-* python
-* python module mutagen
+* python with python module "mutagen"
 * icecast, and ezstream
-* mysqld and python module mysql.connector
+* (optional) mysqld and python module mysql.connector
+* (optional) ffmpeg for music masaging
 
 In Ubuntu you should already have python, get the rest with: `apt-get
 install python-mutagen python-mysql.connector icecast2 ezstream
@@ -41,21 +42,19 @@ mariadb-server`.
 * Make a MySQL database and populate it with extra/schema.sql  (This
   should be done automatically further down the developmental road.)
 * ~~Execute $ ices -c radio.conf~~
+* using ezstream now.
 
-* Have a look at
-  [skaianet-web](https://github.com/skaianet-radio/skaianet-web) if you're
-  interested in using our web interface.
-
+ 
 
 ## Disclaimer
-This software is still indevelopment, so we hereby go above and beyond
-the GPL 3.0 license's limitation of liability and warranty to warn you
-that this project may not be fit for whatever you would like to use
-it for, and that it may just make whatever you run it on immediately
-self destruct.  Use it at your own risk.
+This software was only ever made for one instance deployment, so we hereby
+go above and beyond the GPL 3.0 license's limitation of liability and
+warranty to warn you that this project may not be fit for whatever you
+would like to use it for, and that it may just make whatever you run it
+on immediately self destruct.  Use it at your own risk.
 
 
 ## Contributors
-* Kitty (https://github.com/KiTTYsh)
-* Mozai (https://github.com/mozai/)
+* [Mozai](https://github.com/mozai)
+* [Kitty](https://github.com/KiTTYsh)
 

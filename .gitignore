@@ -1,6 +1,10 @@
-# Wow. :)
+# don't keep the compiled python files
+__pycache__/*
 *.pyc
+# don't upload files that can hold passwords
 config.py
 config.ini
+config.*.ini
 ices/ices.conf
 ezstream/config.xml
+# what else do we ignore?

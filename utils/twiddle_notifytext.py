@@ -29,18 +29,23 @@ MESSAGES = [
 ]
 
 
+# don't need it; should cleanse client-side instead.
 def cleanse(i):
     " clean up the string before sending it "
     return i.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
-if sys.stdin.isatty():
-    skaianet.CONFIG["engine"]["debug"] = "True"
-skaianet.initdb()
-random.shuffle(MESSAGES)
 oldmessage = skaianet.getsetting('notifytext')
-newmessage = cleanse(MESSAGES[0])
-if oldmessage == newmessage:
-    newmessage = cleanse(MESSAGES[-1])
-skaianet.setsetting('notifytext', newmessage)
-skaianet.closedb()
+if sys.stdin.isatty():
+    print(f"""skaianet version: {skaianet.__version__}""")
+    print(f"""old: "{oldmessage}" """)
+random.shuffle(MESSAGES)
+newthing = MESSAGES[0]
+if oldmessage == newthing:
+    newthing = MESSAGES[-1]
+if sys.stdin.isatty():
+    print(f"""new: "{newthing}" """)
+skaianet.setsetting("notifytext", newthing)
+newmessage = skaianet.getsetting("notifytext")
+if sys.stdin.isatty():
+    print(f"""now: "{newmessage}" """)
