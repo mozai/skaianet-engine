@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 " something to automate changing the notifytext "
+# and some daily maintenance stuff I guess
+
 import random
 import sys
 sys.path.append('/srv/radio/engine')
@@ -34,18 +36,23 @@ def cleanse(i):
     " clean up the string before sending it "
     return i.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+def whisper(msg):
+    if sys.stdin.isatty():
+        print(f"{msg}")
 
 oldmessage = skaianet.getsetting('notifytext')
-if sys.stdin.isatty():
-    print(f"""skaianet version: {skaianet.__version__}""")
-    print(f"""old: "{oldmessage}" """)
+whisper(f"""skaianet version: {skaianet.__version__}""")
+whisper(f"""old: "{oldmessage}" """)
 random.shuffle(MESSAGES)
 newthing = MESSAGES[0]
 if oldmessage == newthing:
     newthing = MESSAGES[-1]
-if sys.stdin.isatty():
-    print(f"""new: "{newthing}" """)
 skaianet.setsetting("notifytext", newthing)
 newmessage = skaianet.getsetting("notifytext")
-if sys.stdin.isatty():
-    print(f"""now: "{newmessage}" """)
+whisper(f"""now: "{newmessage}" """)
+
+### since I launch this once a day, might as well do other maintenance
+# trash the table rows older than a year
+skaianet.trimrecent(366)
+skaianet.trimrequests(366)
+

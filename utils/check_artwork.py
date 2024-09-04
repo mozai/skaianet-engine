@@ -4,22 +4,23 @@
 #  and what's in the library that isn't in this folder.
 # If album art is missing, and it finds "track.jpg" copy it over and update the database
 
-# TODO: validate_image do more than just check for broken symlinks
+# TODO: validate_image could to more: corrupt data, weird width/height ratio
 
 import argparse
 import os
 import os.path
 import sys
-
 sys.path.append('/srv/radio/engine')
 import skaianet
-
 
 # this is the 'no art found' image
 NOARTFOUND_ART = "none.png"
 
 # if we dive lower than this, we must've hit a loop
 MAXDEPTH = 12
+
+# holds config settings so I don't have to pass them everywhere
+ARGS = None
 
 
 def validate_image(fullpath):
@@ -43,7 +44,8 @@ def fileswalk(startpath=skaianet.config["library.paths"]["artwork"]):
     filescount = 0
     goodfiles = 0
     badfiles = 0
-    nullart = os.path.join(skaianet.config["library.paths"]["artwork"], NOARTFOUND_ART)
+    nullart = os.path.join(
+        skaianet.config["library.paths"]["artwork"], NOARTFOUND_ART)
     for fpath, _, files in os.walk(startpath, followlinks=True):
         if fpath.count(os.sep) > MAXDEPTH:
             raise Exception(
@@ -65,7 +67,8 @@ def fileswalk(startpath=skaianet.config["library.paths"]["artwork"]):
                 print(f"-- EROR: {fullpath}: {err}")
                 continue
     if (goodfiles + badfiles) != filescount:
-        print(f"-- EROR: saw {filescount} files but counted {goodfiles} good and {badfiles} bad")
+        print(
+            f"-- EROR: saw {filescount} files but counted {goodfiles} good and {badfiles} bad")
     return goodfiles, badfiles
 
 
@@ -86,12 +89,12 @@ def update_artwork(songdata):
                   songpath[:songpath.rfind('.')] + ".png",
                   os.path.join(songpath[:songpath.rfind('/')], "cover.jpg"),
                   os.path.join(songpath[:songpath.rfind('/')], "cover.png"),
-                 )
+                  )
     for i in candidates:
         if os.path.exists(i):
             newfile = i
             break
-    #if not found:
+    # if not found:
     #  # attempt to get the art out of the mp3 file, via mutagen?
     if newfile:
         newfile_mtime = os.path.getmtime(newfile)
@@ -112,19 +115,19 @@ def update_artwork(songdata):
         albumart = f"""{songdata["id"]}{fileext}"""
         destination = os.path.join(artworkpath, albumart)
         if oldfile and os.path.exists(oldfile):
-            if ARGS.dryrun:
-                print(f"""rm "{oldfile}" """)
-            else:
+            if ARGS.commit:
                 os.unlink(oldfile)
-        if os.path.exists(destination):
-            if ARGS.dryrun:
-                print(f"""rm "{destination}" """)
             else:
+                print(f"""rm "{oldfile}" """)
+        if os.path.exists(destination):
+            if ARGS.commit:
                 os.unlink(destination)
-        if ARGS.dryrun:
-            print(f"""ln -s "{newfile}" "{destination}" """)
-        else:
+            else:
+                print(f"""rm "{destination}" """)
+        if ARGS.commit:
             os.symlink(newfile, destination)
+        else:
+            print(f"""ln -s "{newfile}" "{destination}" """)
     else:
         raise Exception("sanity failure")
     return albumart
@@ -148,20 +151,24 @@ def librarywalk():
             if ARGS.warnmissing:
                 print(f"""-- WARN: no art for song {row["id"]}""")
         elif newalbumart is None:
-            print(f"""-- INFO: removing albumart {artworkpath}/{oldalbumart} for song {row["id"]}""")
-            if ARGS.dryrun:
-                print(f"""skaianet.updatesong({row["id"]}, {{"albumart": None}}""")
-            else:
+            print(
+                f"""-- INFO: removing albumart {artworkpath}/{oldalbumart} for song {row["id"]}""")
+            if ARGS.commit:
                 skaianet.updatesong(row["id"], {"albumart": None})
+            else:
+                print(
+                    f"""skaianet.updatesong({row["id"]}, {{"albumart": None}}""")
             badcount += 1
         elif newalbumart == row["albumart"]:
             goodcount += 1
         elif newalbumart != row["albumart"]:
-            print(f"""-- INFO updating library with {{ id: {row["id"]}, albumart: {newalbumart} }}""")
-            if ARGS.dryrun:
-                print(f"""skaianet.updatesong({row["id"]}, {{"albumart": "{newalbumart}"}})""")
-            else:
+            print(
+                f"""-- INFO updating library with {{ id: {row["id"]}, albumart: {newalbumart} }}""")
+            if ARGS.commit:
                 skaianet.updatesong(row["id"], {"albumart": newalbumart})
+            else:
+                print(
+                    f"""skaianet.updatesong({row["id"]}, {{"albumart": "{newalbumart}"}})""")
     return goodcount, badcount
 
 
@@ -169,15 +176,18 @@ def main():
     " Deploy cruxtruder "
     global ARGS
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dryrun", action="store_true", help="dont make changes just report what I would do")
-    parser.add_argument("--warnmissing", action="store_true", help="bark about songs without artwork")
+    parser.add_argument("--commit", action="store_true",
+                        help="make changes (default is 'dryrun' report)")
+    parser.add_argument("--warnmissing", action="store_true",
+                        help="bark about songs without artwork")
     ARGS = parser.parse_args()
 
     print("-- checking the art files on-disk")
     good, bad = fileswalk()
     print(f"-- good: {good} bad: {bad}")
     print("-- checking the art mentioned in the database")
-    good, bad  = librarywalk()
+    good, bad = librarywalk()
     print(f"-- good: {good} bad: {bad}")
+
 
 main()
