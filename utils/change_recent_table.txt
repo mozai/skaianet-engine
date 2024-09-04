@@ -1,0 +1,51 @@
+
+SQLITE doesn't do ALTER TABLE well, but I mean other RDBMSes
+do a crap job anyways.  the following is ardous but it's best.
+
+Do this BY HAND because there's a DROP TABLE in it, and I blew away
+a year's worth of data by accident.  (I had backups.)
+
+old table had two columns 'reqid and 'reqsrc' I wanted to replace
+with a foreign key 'reqid' into another table.
+
+```
+-- shut up about dependencies
+PRAGMA foreign_keys=off;
+-- make it atomic
+BEGIN TRANSACTION;
+-- make a temp space to copy the data I wish to keep
+CREATE TABLE `new_table` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `time` DATETIME NOT NULL,
+  `songid` INTEGER NOT NULL,
+  `listeners` INTEGER DEFAULT 0,
+  `reqid` INTEGER DEFAULT NULL);
+INSERT INTO new_table(id, time, songid, listeners, reqid)
+    SELECT id, time, songid, listeners, reqid FROM recent;
+
+-- seems indexes are quitely dropped by magic
+
+-- gotta drop thew views, else the rename will fail (but not the drop >_< )
+.schema current_song
+DROP VIEW `current_song`;
+.schema most_recent
+DROP VIEW `most_recent`;
+DROP TABLE `recent`;
+-- move it over
+ALTER TABLE new_table RENAME TO recent;
+-- recreate the views
+CREATE VIEW `current_song` AS
+  SELECT s.id as sid, s.title, s.artist, s.album, s.length, s.albumart, s.website, q.reqname, s.last_played as `time` 
+    FROM `recent` r LEFT JOIN `requests` q ON r.reqid = q.id, `songs` s
+    WHERE r.`songid` = s.`id`
+    ORDER BY r.`time` DESC LIMIT 1;
+CREATE VIEW `most_recent` AS
+  SELECT s.album, s.albumart, s.artist, s.length, s.release_date, q.reqname, r.songid, r.`time`, s.title, s.trackno, s.website
+    FROM recent r JOIN songs s ON r.songid = s.id LEFT JOIN `requests` q ON r.reqid = q.id
+    WHERE r.`time` > datetime("now", "-1 hour") ORDER BY r.`time` DESC LIMIT 60;
+
+-- swing that crowbar, Caliborn
+COMMIT;
+-- put the constraints back in
+PRAGMA foreign_keys=on;
+```

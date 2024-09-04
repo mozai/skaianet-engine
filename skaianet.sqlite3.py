@@ -31,6 +31,9 @@ config = configparser.ConfigParser()
 # if a song is bigger than this when you add it, don't set autoplay
 SONGMAXLENGTH = 8 * 60
 
+# occassionally need to trim the 'recent' table
+RECENT_MAXAGE = 366  # days
+
 ####################
 # -- config file --
 def loadconfig(cfgfile):
@@ -50,21 +53,17 @@ def _checkconfig():
 # -- database as a whole --
 
 
-def initdb(autocommit=True):
+def initdb():
     " Initializes the database used for radio control. "
     global _DBCONN
     _DBCONN = sqlite3.connect(config["db.sqlite3"]["dbfile"], isolation_level=None)
     _DBCONN.row_factory = sqlite3.Row
-    # _checkdbschema() 
+    # _checkdbschema()
     return _DBCONN
 
 
-def closedb(commit=True):
+def closedb():
     " Explict clean-up of open filehandles, net connections, flush disk caches "
-    if commit:
-        _DBCONN.commit()
-    else:
-        _DBCONN.rollback()   # .close() without .commit() should already do this
     _DBCONN.close()
 
 
@@ -144,7 +143,7 @@ def getsongmeta(path):
         answer['artist'] = str(i.get('TPE1', ''))
         answer['title'] = str(i.get('TIT2', ''))
         answer['length'] = round(i.info.length)
-        answer['track'] = int(str(i.get('TRCK', '0')))
+        answer['trackno'] = int(str(i.get('TRCK', '0')))
         answer['release_date'] = _get_best_date(i)
         answer['website'] = _extract_a_url_from_mutagen_mp3(i)
     elif path.endswith('.ogg'):
@@ -158,7 +157,7 @@ def getsongmeta(path):
         answer['artist'] = str(i.get('ARTIST', ''))
         answer['title'] = str(i.get('TITLE', ''))
         answer['length'] = round(i.info.length)
-        answer['track'] = int(str(i.get('TRACKNUMBER', '0')))
+        answer['trackno'] = int(str(i.get('TRACKNUMBER', '0')))
         answer['release_date'] = str(i.get('DATE'))
         answer['website'] = _extract_a_url_from_mutagen_ogg(i)
     elif path.endswith('.flac'):
@@ -217,18 +216,24 @@ def addsong(path):
     cur = _DBCONN.cursor()
     cur.execute(
         "SELECT id FROM library WHERE filepath = %(filepath)s LIMIT 1", songmeta)
-    found = cur.fetchone()
+    found = getsongbypath(path)
     if found:
-        updatesong(found[0], songmeta)
+        updatesong(found["id"], songmeta)
     else:
-        songmeta["autoplay"] = 1
+        songmeta.setdefault("album", None)
+        songmeta.setdefault("trackno", None)
+        songmeta.setdefault("release_date", None)
+        songmeta.setdefault("website", None)
+        songmeta.setdefault("autoplay", True)
+        songmeta.setdefault("requestable", True)
         if songmeta["length"] >= SONGMAXLENGTH:
-            songmeta["autoplay"] = 0
+            songmeta["autoplay"] = False
         elif songmeta["length"] <= 1:
-            songmeta["autoplay"] = 0
+            songmeta["autoplay"] = False
         sql = "INSERT INTO songs " \
-              "(title, artist, album, length, website, autplay, filepath) " \
-              "VALUES (%(title)s, %(artist)s, %(album)s, %(length)s, %(website)s, %(autoplay)s, %(filepath)s)"
+              "(title, artist, album, length, trackno, release_date, website, autoplay, requestable, filepath) " \
+              "VALUES " \
+              "(:title, :artist, :album, :length, :trackno, :release_date, :website, :autoplay, :requestable, :filepath)"
         cur.execute(sql, songmeta)
     cur.close()
     songmeta = getsongbypath(path)
@@ -236,28 +241,22 @@ def addsong(path):
 
 
 def getrandomsong():
-    """ fetch a song from the songs table that wasn't recently played
-    """
-    # actually returns the last-recently-played song of recentlimit + 1
+    " fetch a song from the songs table that wasn't recently played "
     cur = _DBCONN.cursor()
-    #recentlimit = config["engine"].get("recentlimit") or 20
     now = time.gmtime()
     if (now.tm_mon == 12 and now.tm_mday > 14 and random.random() < 0.334):
-        # it's around christmas, play the christmas songs more often
+        # CREATE VIEW `random_christmas_song` AS SELECT * FROM ( SELECT s.* FROM `songs` s, `songtags` st WHERE st.tag = "christmas" AND s.id = st.songid AND s.autoplay = 1 ORDER BY s.last_played ASC LIMIT 10 ) ORDER BY random() LIMIT 1
         cur.execute("SELECT * FROM random_christmas_song")
     else:
-        # cur.execute("SELECT l.* FROM (SELECT * FROM songs WHERE autoplay = 1 ORDER BY random() LIMIT %(range)s) l "
-        #            "LEFT JOIN recent ON l.id = recent.songid ORDER BY recent.time ASC LIMIT 1",
-        #            {'range': recentlimit + 1})
-        # create or replace view `random_fresh_song` AS select * from songs where autoplay = 1 and not id in (select songid from recent where time > current_timestamp() - interval 1 hour) order by random() limit 1;
-        # create or replace view `random_fresh_song` AS SELECT * FROM (SELECT * FROM songs WHERE autoplay = 1 ORDER BY random() LIMIT 20) AS subquery ORDER BY last_played ASC LIMIT 1;
+        # CREATE VIEW `random_fresh_song` AS SELECT * FROM ( SELECT * FROM `songs` WHERE autoplay = True ORDER BY last_played ASC LIMIT 10) ORDER BY random() LIMIT 1
         cur.execute("SELECT * FROM random_fresh_song")
     result = cur.fetchone()
     cur.close()
     assert result  # should never be None
     answer = dict(result)
-    answer['reqname'] = ''
-    answer['reqsrc'] = ''
+    answer['reqname'] = None
+    answer['reqsrc'] = None
+    answer['reqid'] = None
     return answer
 
 
@@ -273,7 +272,8 @@ def getsongbyid(idnum):
 
 def getsongbypath(fullpath):
     " find library entry matching file on disk "
-    if not (fullpath.endswith(".mp3") or fullpath.endswith(".ogg")):
+    fileext = fullpath[fullpath.rfind('.')+1:].lower()
+    if fileext not in ("mp3", ".ogg",):
         return None
     librarypath = config["library.paths"].get("music")
     shortpath = fullpath.replace(librarypath, '')
@@ -290,9 +290,8 @@ def getsongbypath(fullpath):
 
 def getsongbyartpath(fullpath):
     " found artwork, is it attached to a song? "
-    # should I check if the file exists?
     fileext = fullpath[fullpath.rfind('.')+1:].lower()
-    if fileext not in ('jpg', 'jpeg', 'webp', 'png', 'gif', 'avif'):
+    if fileext not in ('jpg', 'jpeg', 'webp', 'png', 'gif', 'avif',):
         return None
     librarypath = config["library.paths"].get("artwork")
     shortpath = fullpath.replace(librarypath, '')
@@ -304,7 +303,7 @@ def getsongbyartpath(fullpath):
     found = cur.fetchone()
     cur.close()
     if not found:
-        return None  
+        return None
     return found
 
 def listsongids(autoplay=True, requestable=None):
@@ -336,7 +335,7 @@ def rmsong(idnum):
     # don't delete, because songs.id is a foreign key to other tables
     # removecursor.execute("DELETE FROM songs WHERE id=%(id)s", {'id': idnum})
     removecursor.execute(
-        "UPDATE songs SET autoplay = 0, requestable = 0, length = NULL WHERE id=%(id)s", {'id': idnum})
+        "UPDATE songs SET autoplay = 0, requestable = 0, WHERE id = ?", (idnum,))
     removecursor.close()
 
 
@@ -344,29 +343,28 @@ def updatesong(idnum, songdata):
     " update metadata on one song "
     # db agnostic way.  one song at a time please
     # ie. updatesong(413, {albumart: "413.jpg", length: 612})
-    sql = "UPDATE songs SET "
-    if 'length' in songdata:
+    if "length" in songdata:
         if songdata["length"] < 1:
             songdata["autoplay"] = 0
             songdata["requestable"] = 0
         elif songdata["length"] >= SONGMAXLENGTH:
             songdata["autoplay"] = 0
         del songdata["length"]
+    sql = "UPDATE songs SET "
     params = [ ]
-    for k,v in songdata.items():
-        if k == "id":
-            continue
-        sql += f"{k} = ? , "
-        params.append(v)
-    if sql.endswith(", "):
-        sql = sql[:-2]
-    sql += " WHERE id = ? ;"
+    for k in ("autoplay", "requestable", "title", "artist", "album", "length", "trackno", "release_date", "filepath", "albumart", "website",):
+        if k in songdata:
+            sql += f" `{k}` = ? ,"
+            params.append(songdata[k])
+    if sql.endswith(","):
+        sql = sql[:-1]
     params.append(idnum)
+    sql += " WHERE id = ? ;"
     cur = _DBCONN.cursor()
     cur.execute(sql, params)
-    res = cur.rowcount
+    res = cur.rowcount or 0  # -1 for select, but 1 for update
     cur.close()
-    return res == 1
+    return res > 0
 
 
 def _checksongstable():
@@ -441,10 +439,10 @@ def addjingle(path):
     cur = _DBCONN.cursor()
     sql = "INSERT INTO jingles " \
           "(title, artist, length, website, filepath) " \
-          "VALUES (%(title)s, %(artist)s, %(length)s, %(website)s, %(filepath)s)"
+          "VALUES :title, :artist, :length, :website, :filepath)"
     cur.execute(sql, songmeta)
     cur.execute(
-        "SELECT id FROM jingles WHERE filepath = %(filepath)s LIMIT 1", songmeta)
+        "SELECT id FROM jingles WHERE filepath = :filepath LIMIT 1", songmeta)
     row = cur.fetchone()
     cur.close()
     if not row:
@@ -474,12 +472,13 @@ def listjingleids(autoplay=True):
 def getrandomjingle():
     " fetch a new-ish station identification "
     cur = _DBCONN.cursor()
-    cur.execute("SELECT * FROM (SELECT * FROM jingles WHERE autoplay = 1 ORDER BY random() LIMIT 5) AS subquery ORDER BY last_played ASC LIMIT 1;")
-    result = cur.fetchone()
+    # create view ... SELECT * FROM (SELECT * FROM jingles WHERE autoplay = 1 ORDER BY random() LIMIT 5) AS subquery ORDER BY last_played ASC LIMIT 1;")
+    cur.execute("SELECT * FROM random_fresh_jingle")
+    row = cur.fetchone()
     cur.close()
-    if result is None:
+    if row is None:
         return None
-    answer = result.copy()
+    answer = dict(row)
     answer['reqname'] = ''
     answer['reqsrc'] = ''
     return answer
@@ -496,7 +495,8 @@ def getjinglebyid(idnum):
 
 def getjinglebypath(fullpath):
     " return id# for the record for this file "
-    if not (fullpath.endswith(".mp3") or fullpath.endswith(".ogg")):
+    fileext = fullpath[fullpath.rfind('.')+1:].lower()
+    if fileext not in ("mp3", ".ogg",):
         return None
     jinglepath = config["jingles"].get("path")
     shortpath = fullpath.replace(jinglepath, '')
@@ -505,14 +505,11 @@ def getjinglebypath(fullpath):
     cur = _DBCONN.cursor()
     sql = "SELECT id FROM jingles WHERE filepath = ? or filepath = ? LIMIT 1"
     cur.execute(sql, (fullpath, shortpath,))
-    found = cur.fetchall()
+    found = cur.fetchone()
     cur.close()
     if not found:
         return None
-    if len(found) > 1:
-        # TODO: how should we report this error?
-        pass
-    return found[0]
+    return found
 
 
 def rmjingle(idnum):
@@ -530,7 +527,7 @@ def updatejingle(idnum, songdata):
     sql = "UPDATE jingles SET "
     for k in jinglefields:
         if k in songdata:
-            sql += f"{k} = ?, "
+            sql += f"`{k}` = ?, "
             values.append(songdata[k])
     if sql.endswith(", "):
         sql = sql[:-2]
@@ -591,7 +588,7 @@ def _checkjinglesfiles():
 #   reqsrc: varchar
 #   time: datetime
 #   listeners: int
-def setplaying(songid, reqname='', reqsrc='', listeners=0, jingle=False):
+def setplaying(songid, reqid=None, listeners=0, jingle=False):
     """ Adds a song to the recently played database.
     This is assuming that this function is called when the song starts
     playing so that the timing can be accurate for linked functions.
@@ -604,10 +601,10 @@ def setplaying(songid, reqname='', reqsrc='', listeners=0, jingle=False):
         sql = "UPDATE jingles SET last_played = current_timestamp WHERE id = ?"
         cur.execute(sql, (songid, ))
     else:
-        sql = "INSERT INTO recent (songid, reqname, reqsrc, time, listeners) " \
-            "VALUES (?, ?, ?, current_timestamp, ? )"
-        data = (songid, reqname, reqsrc, listeners,)
-        cur.execute(sql, data)
+        sql = "INSERT INTO recent (songid, reqid, time, listeners) " \
+            "VALUES (?, ?, current_timestamp, ? )"
+        params = (songid, reqid, listeners,)
+        cur.execute(sql, params)
         sql = "UPDATE songs SET last_played = current_timestamp WHERE id = ?"
         cur.execute(sql, (songid,))
     cur.close()
@@ -624,19 +621,30 @@ def getplaying():
     return answer
 
 
+def trimrecent(maxage=RECENT_MAXAGE):
+    " the biggest table is 'recent', it should be kept short "
+    maxage = int(maxage)
+    assert maxage > 0
+    cur = _DBCONN.cursor()
+    cur.execute(f"DELETE from recent WHERE time < date('now',  '-{maxage} days')")
+    return True
+
+
 def _checkrecenttable():
     # tell me about the mess
     suggestions = []
-    # TODO: what do we do to validate the recents table?
     cur = _DBCONN.cursor()
     cur.execute("SELECT sum(1), max(julianday() - julianday(time)) FROM recent;")
     row = cur.fetchone()
     if row[0] < (128 * 1024):
         suggestions.append(
             f"recent: do you need {row[0]} rows in the recent table?")
-    if row[1] > 366:
+    if row[1] > RECENT_MAXAGE:
         suggestions.append(
-            f"recent: do you need {row[1]}>365 days of history?")
+            f"recent: do you need {row[1]}>{RECENT_MAXAGE} days of history?")
+    cur.execute("SELECT r.* FROM recent LEFT JOIN songs s ON r.songid = s.id WHERE s.id IS NULL;")
+    for row in cur.fetchall():
+        suggestions.append(f"""recent: {row["time"]} mentions nonexistent song {row["songid"]}""")
     return suggestions
 
 
@@ -644,65 +652,74 @@ def _checkrecenttable():
 # -- requests table --
 # should be:
 #   id: int, primary key -- probably unused
-#   reqid: int  -- foreign key to songs.id
-#   reqname: varchar
-#   reqsrc: varchar
-#   override: bool  -- unused
+#   songid: int  -- foreign key to songs.id
+#   reqtime: datetime -- when the request was inserted
+#   playtime: datetime or null -- when the request was served
+#   reqname: varchar or "Anonymous" -- who asked
+#   reqsrc: varchar -- ip address for who asked
 
 def addrequest(songid, reqname, reqsrc):
     " user wants to hear a song "
     cur = _DBCONN.cursor()
     sql = "INSERT INTO requests (songid, reqname, reqsrc) VALUES (?, ?, ?)"
     cur.execute(sql, (songid, reqname, reqsrc,))
-    cur.execute("SELECT * FROM requests ORDER BY id DESC")
-    found = cur.fetchone()
-    cur.close()
-    if found:
-        return found[0]
     return None
 
-# TODO: replace this with if(getrequest())
 def requestqueued():
     " Checks if there is a request waiting to be processed. "
-    # Takes no arguments, returns True or False.
-    # TODO: do we need this? or can getrequest() just return None ?
-    cur = _DBCONN.cursor()
-    cur.execute('SELECT id FROM requests LIMIT 1')
-    found = cur.fetchone()
-    cur.close()
-    return found is not None
+    return getrequest(pop=False)
 
-
-# TODO: should rename this to poprequest or shiftrequest so we know we're writing
+# TODO: should rename requestsqueued to getrequesta and this to poprequest
 def getrequest(pop=True):
     " pops a request off the head of the queue "
     answer = None
-    while answer is None:
-        cur = _DBCONN.cursor()
-        cur.execute(
-            "SELECT id, songid, reqname, reqsrc FROM requests ORDER BY id ASC LIMIT 1")
-        reqdata = cur.fetchone()
-        if reqdata is None:
-            break
+    cur = _DBCONN.cursor()
+    cur.execute("""SELECT r.id as id, songid, reqname, reqsrc, requestable 
+        FROM requests r LEFT JOIN songs s ON r.songid = s.id 
+        WHERE s.requestable = true AND r.playtime IS NULL 
+        ORDER BY r.reqtime ASC LIMIT 1""")
+    req = cur.fetchone()
+    if req:
         if pop:
-            cur.execute("DELETE FROM requests WHERE id = ?", (reqdata['id'],))
-        cur.execute(
-            "SELECT id, filepath, title, artist, album, length, "
-            "website FROM songs WHERE id = ? and requestable = 1 LIMIT 1",
-            (reqdata['songid'],))
-        libdata = cur.fetchone()
-        if libdata:
-            answer = dict(libdata)
-            answer['reqname'] = reqdata['reqname']
-            answer['reqsrc'] = reqdata['reqsrc']
+            cur.execute("UPDATE requests SET playtime = CURRENT_TIMESTAMP WHERE id = ?", (req["id"],))
+        cur.execute("SELECT *  FROM songs WHERE id = ? LIMIT 1", (req["songid"],))
+        row = cur.fetchone()
+        if row:
+            answer = dict(row)
+            answer['reqname'] = req['reqname']
+            answer['reqsrc'] = req['reqsrc']
+            answer['reqid'] = req['id']
     return answer
+
+
+def trimrequests(maxage=RECENT_MAXAGE):
+    " the biggest table is 'recent', it should be kept short "
+    # original design emptied it out, as if it was a queue not a ledger
+    maxage = int(maxage)
+    assert maxage > 0
+    cur = _DBCONN.cursor()
+    cur.execute(f"DELETE from requests WHERE playtime < date('now',  '-{maxage} days')")
+    return True
 
 
 def _checkrequeststable():
     # tell me about the mess
     suggestions = []
-    # dunno what to do here, since it'll be empty most of the time
-    # check for rows where reqid doesn't match any songs.id ?
+    cur = _DBCONN.cursor()
+    cur.execute("SELECT r.* FROM requests r LEFT JOIN songs s ON r.songid = s.id WHERE s.id IS NULL;")
+    rows = cur.fetchall()
+    for row in rows:
+        suggestions.append(f"""requests: #{row["id"]} asks for non-existent song {row["songid"]}""")
+    #cur.execute("SELECT max(julianday() - julianday(playtime)) FROM requests;")
+    #row = cur.fetchone()
+    #if row[0] > RECENT_MAXAGE:
+    #    suggestions.append(
+    #        f"requests: do you need {row[1]}>{RECENT_MAXAGE} days of history?")
+    #cur.execute("SELECT sum(1) FROM requests WHERE playtime is null;");
+    #row = cur.fetchone()
+    #if row[0] > 32:
+    #    suggestions.append(
+    #        f"requests: {row[0]} unfulfilled requests seems excessive")
     return suggestions
 
 
@@ -769,6 +786,29 @@ def _checksettingstable():
 #   songid: int --  foreign key to songs.id
 #   tag: varchar(63)
 
+def getsongidsfortag(tagstring):
+    cur = _DBCONN.cursor()
+    cur.execute("SELECT songid FROM songtags t LEFT JOIN songs s WHERE s.id IS NOT NULL AND tag = ?", (tagstring,))
+    rows = cur.fetchall()
+    if not rows:
+      return []
+    return list([i[0] for i in rows])
+
+def addtag(sid, tagstring):
+    cur = _DBCONN.cursor()
+    cur.execute("SELECT songid FROM songtags WHERE songid = ? AND tag = ?", (sid, tagstring,))
+    if cur.fetchone():
+      return True
+    cur.execute("INSERT into songtags (songid, tag) VALUES ?, ?", (sid, tagstring,))
+    if cur.rowcount == 1:
+      return True
+    return False
+
+def rmtag(sid, tagstring):
+    cur = _DBCONN.cursor()
+    cur.execute("DELETE FROM songtags WHERE songid = ? AND tag = ?", (sid, tagstring,))
+    return True
+
 def _checktagstable():
     " verify every tag has a song "
     suggestions = []
@@ -808,14 +848,14 @@ def listfileproblems():
 
 # do these on load, in case someone forgets
 loadconfig(_CFGFILE)
-initdb(autocommit=True)
+initdb()
 
 if __name__ == '__main__':
     print("This is meant to be a library module; launching tests instead")
     print("*** testing skaianet module")
     config["engine"]["debug"] = "true"
     # turn off database commits so we can test the set*() methods
-    initdb(autocommit=False)
+    initdb()
 
     print("-- test songs table ---")
     # songs table
@@ -843,9 +883,8 @@ if __name__ == '__main__':
 
     # requests table
     print("-- test requests ---")
-    print(f"""addrequest({testsong["id"]}, Testuser, 127.0.0.1): {addrequest(testsong["id"], "Testuser", "127.0.0.1")}""")
     print(f"requestqueued(): {requestqueued()}")
-    #print(f"getrequest(): {getrequest()}")
+    #print(f"getrequest(): {getrequest()}")  # this pops it off the queue
 
     print("-- test settings ---")
     print(f"""listsettings(): {listsettings()}""")
@@ -866,4 +905,4 @@ if __name__ == '__main__':
         print("- " + "\n- ".join(suggs))
 
     # close without writing
-    closedb(commit=False)
+    closedb()

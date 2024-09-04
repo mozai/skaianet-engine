@@ -63,7 +63,7 @@ def get_next():
         elif isinstance(icestats['source'], list):
             listencount = icestats['source'][0]['listeners']
     # update nowplaying state in db
-    skaianet.setplaying(nextsong["id"], nextsong["reqname"], nextsong["reqsrc"], listencount)
+    skaianet.setplaying(nextsong["id"], nextsong.get("reqid"), listencount)
     return f"{fullpath}"
 
 
