@@ -267,7 +267,7 @@ def getsongbyid(idnum):
     cur.execute(sql, (idnum,))
     answer = cur.fetchone()
     cur.close()
-    return answer
+    return dict(answer)
 
 
 def getsongbypath(fullpath):
@@ -286,7 +286,7 @@ def getsongbypath(fullpath):
     cur.close()
     if not found:
         return None
-    return found
+    return dict(found)
 
 def getsongbyartpath(fullpath):
     " found artwork, is it attached to a song? "
@@ -304,7 +304,7 @@ def getsongbyartpath(fullpath):
     cur.close()
     if not found:
         return None
-    return found
+    return dict(found)
 
 def listsongids(autoplay=True, requestable=None):
     " puke up a long list of valid songids "
@@ -607,7 +607,7 @@ def setplaying(songid, reqid=None, listeners=0, jingle=False):
         cur.execute(sql, params)
         sql = "UPDATE songs SET last_played = current_timestamp WHERE id = ?"
         cur.execute(sql, (songid,))
-    cur.close()
+    return True
 
 
 def getplaying():
@@ -627,6 +627,8 @@ def trimrecent(maxage=RECENT_MAXAGE):
     assert maxage > 0
     cur = _DBCONN.cursor()
     cur.execute(f"DELETE from recent WHERE time < date('now',  '-{maxage} days')")
+    cur.execute("VACUUM")
+    cur.close()  # explict close maybe it'll force flush?
     return True
 
 
@@ -699,6 +701,8 @@ def trimrequests(maxage=RECENT_MAXAGE):
     assert maxage > 0
     cur = _DBCONN.cursor()
     cur.execute(f"DELETE from requests WHERE playtime < date('now',  '-{maxage} days')")
+    cur.execute("VACUUM")
+    cur.close()  # explict close maybe it'll force flush?
     return True
 
 

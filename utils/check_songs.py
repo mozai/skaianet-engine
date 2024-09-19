@@ -23,6 +23,7 @@ REQUEST_TOOLONG = AUTOPLAY_TOOLONG * 1.5
 # hold parameter switches so I don't have to pass it every time
 ARGS = None
 
+
 def log_info(msg):
     " saves typing "
     if sys.stdout.isatty():
@@ -123,7 +124,7 @@ def librarywalk():
     badrows = 0
     songids = skaianet.listsongids()
     for sid in songids:
-        row = skaianet.getsongid(sid)
+        row = skaianet.getsongbyid(sid)
         errors = []
         warnings = []
         for i in ("title", "length", "filepath"):
@@ -182,6 +183,8 @@ def main():
     log_info("INFO checking the database rows")
     good, bad = librarywalk()
     log_info(f"INFO rowcount: good {good} bad {bad}")
+    if not ARGS.commit:
+        print("INFO launch again with '--commit' to write these changes")
 
 
 main()
