@@ -27,14 +27,14 @@ def validate_image(fullpath):
     " saw a file on disk, check if it's bad or unused "
     isgood = True
     if os.path.islink(fullpath) and not os.path.exists(fullpath):
-        print(f"-- WARN: broken symlink {fullpath}")
+        print(f"WARN: broken symlink {fullpath}")
         isgood = False
     fsize = os.path.getsize(fullpath)
     if fsize < 1024:
-        print(f"-- WARN: file is too small to be an image: {fullpath}")
+        print(f"WARN: file is too small to be an image: {fullpath}")
         isgood = False
     elif fsize > 4 * 1048576:
-        print(f"-- WARN: file is too big for albumart: {fullpath}")
+        print(f"WARN: file is too big for albumart: {fullpath}")
         isgood = False
     return isgood
 
@@ -49,13 +49,13 @@ def fileswalk(startpath=skaianet.config["library.paths"]["artwork"]):
     for fpath, _, files in os.walk(startpath, followlinks=True):
         if fpath.count(os.sep) > MAXDEPTH:
             raise Exception(
-                f"-- EROR: library is too deep ({MAXDEPTH}); possible symlink loop")
+                f"EROR: library is too deep ({MAXDEPTH}); possible symlink loop")
         for fname in files:
             fullpath = os.path.join(fpath, fname)
             if fullpath == nullart:
                 continue
             if fname[fname.rfind('.'):].lower() not in ('.jpg', '.jpeg', '.png', '.webm', '.avif',):
-                print(f"-- WARN: unrecognized file: {fullpath}")
+                print(f"WARN: unrecognized file: {fullpath}")
                 continue
             filescount += 1
             try:
@@ -64,11 +64,11 @@ def fileswalk(startpath=skaianet.config["library.paths"]["artwork"]):
                 else:
                     badfiles += 1
             except Exception as err:
-                print(f"-- EROR: {fullpath}: {err}")
+                print(f"EROR: {fullpath}: {err}")
                 continue
     if (goodfiles + badfiles) != filescount:
         print(
-            f"-- EROR: saw {filescount} files but counted {goodfiles} good and {badfiles} bad")
+            f"EROR: saw {filescount} files but counted {goodfiles} good and {badfiles} bad")
     return goodfiles, badfiles
 
 
@@ -78,6 +78,7 @@ def update_artwork(songdata):
     musicpath = skaianet.config["library.paths"]["music"]
     songpath = os.path.join(musicpath, songdata["filepath"])
     oldfile, oldfile_mtime = None, 0
+    changes_yes = False
     if songdata["albumart"]:
         oldfile = os.path.join(artworkpath, songdata["albumart"])
         if os.path.exists(oldfile):
@@ -111,6 +112,7 @@ def update_artwork(songdata):
         albumart = songdata["albumart"]
     elif newfile_mtime > oldfile_mtime:
         # we found newer albumart
+        changes_yes = True
         fileext = newfile[newfile.rfind('.'):]
         albumart = f"""{songdata["id"]}{fileext}"""
         destination = os.path.join(artworkpath, albumart)
@@ -118,18 +120,20 @@ def update_artwork(songdata):
             if ARGS.commit:
                 os.unlink(oldfile)
             else:
-                print(f"""rm "{oldfile}" """)
+                print(f"""DBUG: rm "{oldfile}" """)
         if os.path.exists(destination):
             if ARGS.commit:
                 os.unlink(destination)
             else:
-                print(f"""rm "{destination}" """)
+                print(f"""DBUG: rm "{destination}" """)
         if ARGS.commit:
             os.symlink(newfile, destination)
         else:
-            print(f"""ln -s "{newfile}" "{destination}" """)
+            print(f"""DBUG: ln -s "{newfile}" "{destination}" """)
     else:
         raise Exception("sanity failure")
+    if changes_yes and not ARGS.commit:
+        print("DBUG: use --commit to write these changes")
     return albumart
 
 
@@ -137,38 +141,43 @@ def librarywalk():
     " look at what is mentioned in the database, and advise"
     goodcount = 0
     badcount = 0
+    changes_yes = False
     artworkpath = skaianet.config["library.paths"]["artwork"]
     songids = skaianet.listsongids()
     for sid in songids:
         row = skaianet.getsongbyid(sid)
         if not row:
-            print(f"""-- EROR: bad songid {sid}""")
+            print(f"""EROR: bad songid {sid}""")
             badcount += 1
             continue
         oldalbumart = row["albumart"]
         newalbumart = update_artwork(row)  # returns shortname of new file
         if oldalbumart is None and newalbumart is None:
             if ARGS.warnmissing:
-                print(f"""-- WARN: no art for song {row["id"]}""")
+                print(f"""WARN: no art for song {row["id"]}""")
         elif newalbumart is None:
+            changes_yes = True
             print(
-                f"""-- INFO: removing albumart {artworkpath}/{oldalbumart} for song {row["id"]}""")
+                f"""INFO: removing albumart {artworkpath}/{oldalbumart} for song {row["id"]}""")
             if ARGS.commit:
                 skaianet.updatesong(row["id"], {"albumart": None})
             else:
                 print(
-                    f"""skaianet.updatesong({row["id"]}, {{"albumart": None}}""")
+                    f"""DBUG: skaianet.updatesong({row["id"]}, {{"albumart": None}}""")
             badcount += 1
         elif newalbumart == row["albumart"]:
             goodcount += 1
         elif newalbumart != row["albumart"]:
+            changes_yes = True
             print(
-                f"""-- INFO updating library with {{ id: {row["id"]}, albumart: {newalbumart} }}""")
+                f"""INFO: updating library with {{ id: {row["id"]}, albumart: {newalbumart} }}""")
             if ARGS.commit:
                 skaianet.updatesong(row["id"], {"albumart": newalbumart})
             else:
                 print(
-                    f"""skaianet.updatesong({row["id"]}, {{"albumart": "{newalbumart}"}})""")
+                    f"""DBUG: skaianet.updatesong({row["id"]}, {{"albumart": "{newalbumart}"}})""")
+    if changes_yes and not ARGS.commit:
+        print("DBUG: use --commit to write these changes")
     return goodcount, badcount
 
 
@@ -182,12 +191,12 @@ def main():
                         help="bark about songs without artwork")
     ARGS = parser.parse_args()
 
-    print("-- checking the art files on-disk")
+    print("INFO: checking the art files on-disk")
     good, bad = fileswalk()
-    print(f"-- good: {good} bad: {bad}")
-    print("-- checking the art mentioned in the database")
+    print(f"INFO: good: {good} bad: {bad}")
+    print("INFO: checking the art mentioned in the database")
     good, bad = librarywalk()
-    print(f"-- good: {good} bad: {bad}")
+    print(f"INFO: good: {good} bad: {bad}")
 
 
 main()

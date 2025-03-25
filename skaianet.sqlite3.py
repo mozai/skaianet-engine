@@ -36,6 +36,8 @@ RECENT_MAXAGE = 366  # days
 
 ####################
 # -- config file --
+
+
 def loadconfig(cfgfile):
     " read config.ini so know where everything else is "
     global config
@@ -56,7 +58,8 @@ def _checkconfig():
 def initdb():
     " Initializes the database used for radio control. "
     global _DBCONN
-    _DBCONN = sqlite3.connect(config["db.sqlite3"]["dbfile"], isolation_level=None)
+    _DBCONN = sqlite3.connect(
+        config["db.sqlite3"]["dbfile"], isolation_level=None)
     _DBCONN.row_factory = sqlite3.Row
     # _checkdbschema()
     return _DBCONN
@@ -143,7 +146,10 @@ def getsongmeta(path):
         answer['artist'] = str(i.get('TPE1', ''))
         answer['title'] = str(i.get('TIT2', ''))
         answer['length'] = round(i.info.length)
-        answer['trackno'] = int(str(i.get('TRCK', '0')))
+        trackno = str(i.get('TRCK', '0'))
+        if '/' in trackno:
+            trackno = trackno[:trackno.find('/')]
+        answer['trackno'] = int(trackno)
         answer['release_date'] = _get_best_date(i)
         answer['website'] = _extract_a_url_from_mutagen_mp3(i)
     elif path.endswith('.ogg'):
@@ -157,7 +163,10 @@ def getsongmeta(path):
         answer['artist'] = str(i.get('ARTIST', ''))
         answer['title'] = str(i.get('TITLE', ''))
         answer['length'] = round(i.info.length)
-        answer['trackno'] = int(str(i.get('TRACKNUMBER', '0')))
+        trackno = str(i.get('TRACKNUMBER', '0'))
+        if '/' in trackno:
+            trackno = trackno[:trackno.find('/')]
+        answer['trackno'] = int(trackno)
         answer['release_date'] = str(i.get('DATE'))
         answer['website'] = _extract_a_url_from_mutagen_ogg(i)
     elif path.endswith('.flac'):
@@ -211,11 +220,13 @@ def addsong(path):
     librarypath = config["library.paths"].get("music")
     if path.startswith(librarypath):
         songmeta['filepath'] = path.replace(librarypath, '')
+        if songmeta['filepath'].startswith('/'):
+            songmeta['filepath'] = songmeta['filepath'][1:]
     else:
         songmeta['filepath'] = path
     cur = _DBCONN.cursor()
     cur.execute(
-        "SELECT id FROM library WHERE filepath = %(filepath)s LIMIT 1", songmeta)
+        "SELECT id FROM songs WHERE filepath = :filepath LIMIT 1", songmeta)
     found = getsongbypath(path)
     if found:
         updatesong(found["id"], songmeta)
@@ -288,6 +299,7 @@ def getsongbypath(fullpath):
         return None
     return dict(found)
 
+
 def getsongbyartpath(fullpath):
     " found artwork, is it attached to a song? "
     fileext = fullpath[fullpath.rfind('.')+1:].lower()
@@ -305,6 +317,7 @@ def getsongbyartpath(fullpath):
     if not found:
         return None
     return dict(found)
+
 
 def listsongids(autoplay=True, requestable=None):
     " puke up a long list of valid songids "
@@ -329,6 +342,7 @@ def listsongids(autoplay=True, requestable=None):
     cur.close()
     return found
 
+
 def rmsong(idnum):
     " Remove a song from the songs table.  "
     removecursor = _DBCONN.cursor()
@@ -351,7 +365,7 @@ def updatesong(idnum, songdata):
             songdata["autoplay"] = 0
         del songdata["length"]
     sql = "UPDATE songs SET "
-    params = [ ]
+    params = []
     for k in ("autoplay", "requestable", "title", "artist", "album", "length", "trackno", "release_date", "filepath", "albumart", "website",):
         if k in songdata:
             sql += f" `{k}` = ? ,"
@@ -378,9 +392,11 @@ def _checksongstable():
         sid = row["id"]
         fullpath = os.path.join(librarypath, row['filepath'])
         if not os.path.isfile(fullpath):
-            suggestions.append(f"""library: song {sid} missing file: {row["filepath"]}""")
+            suggestions.append(
+                f"""library: song {sid} missing file: {row["filepath"]}""")
         if not row["length"] > 1:
-            suggestions.append(f"""library: song {sid} has bad length: {row["length"]}""")
+            suggestions.append(
+                f"""library: song {sid} has bad length: {row["length"]}""")
         if not row["title"]:
             suggestions.append(f"""library: song {sid} missing title""")
         if not row["artist"]:
@@ -626,7 +642,8 @@ def trimrecent(maxage=RECENT_MAXAGE):
     maxage = int(maxage)
     assert maxage > 0
     cur = _DBCONN.cursor()
-    cur.execute(f"DELETE from recent WHERE time < date('now',  '-{maxage} days')")
+    cur.execute(
+        f"DELETE from recent WHERE time < date('now',  '-{maxage} days')")
     cur.execute("VACUUM")
     cur.close()  # explict close maybe it'll force flush?
     return True
@@ -644,9 +661,11 @@ def _checkrecenttable():
     if row[1] > RECENT_MAXAGE:
         suggestions.append(
             f"recent: do you need {row[1]}>{RECENT_MAXAGE} days of history?")
-    cur.execute("SELECT r.* FROM recent LEFT JOIN songs s ON r.songid = s.id WHERE s.id IS NULL;")
+    cur.execute(
+        "SELECT r.* FROM recent LEFT JOIN songs s ON r.songid = s.id WHERE s.id IS NULL;")
     for row in cur.fetchall():
-        suggestions.append(f"""recent: {row["time"]} mentions nonexistent song {row["songid"]}""")
+        suggestions.append(
+            f"""recent: {row["time"]} mentions nonexistent song {row["songid"]}""")
     return suggestions
 
 
@@ -665,26 +684,30 @@ def addrequest(songid, reqname, reqsrc):
     cur = _DBCONN.cursor()
     sql = "INSERT INTO requests (songid, reqname, reqsrc) VALUES (?, ?, ?)"
     cur.execute(sql, (songid, reqname, reqsrc,))
-    return None
+
 
 def requestqueued():
     " Checks if there is a request waiting to be processed. "
     return getrequest(pop=False)
 
 # TODO: should rename requestsqueued to getrequesta and this to poprequest
+
+
 def getrequest(pop=True):
     " pops a request off the head of the queue "
     answer = None
     cur = _DBCONN.cursor()
-    cur.execute("""SELECT r.id as id, songid, reqname, reqsrc, requestable 
-        FROM requests r LEFT JOIN songs s ON r.songid = s.id 
-        WHERE s.requestable = true AND r.playtime IS NULL 
+    cur.execute("""SELECT r.id as id, songid, reqname, reqsrc, requestable
+        FROM requests r LEFT JOIN songs s ON r.songid = s.id
+        WHERE s.requestable = true AND r.playtime IS NULL
         ORDER BY r.reqtime ASC LIMIT 1""")
     req = cur.fetchone()
     if req:
         if pop:
-            cur.execute("UPDATE requests SET playtime = CURRENT_TIMESTAMP WHERE id = ?", (req["id"],))
-        cur.execute("SELECT *  FROM songs WHERE id = ? LIMIT 1", (req["songid"],))
+            cur.execute(
+                "UPDATE requests SET playtime = CURRENT_TIMESTAMP WHERE id = ?", (req["id"],))
+        cur.execute("SELECT *  FROM songs WHERE id = ? LIMIT 1",
+                    (req["songid"],))
         row = cur.fetchone()
         if row:
             answer = dict(row)
@@ -700,7 +723,8 @@ def trimrequests(maxage=RECENT_MAXAGE):
     maxage = int(maxage)
     assert maxage > 0
     cur = _DBCONN.cursor()
-    cur.execute(f"DELETE from requests WHERE playtime < date('now',  '-{maxage} days')")
+    cur.execute(
+        f"DELETE from requests WHERE playtime < date('now',  '-{maxage} days')")
     cur.execute("VACUUM")
     cur.close()  # explict close maybe it'll force flush?
     return True
@@ -710,18 +734,20 @@ def _checkrequeststable():
     # tell me about the mess
     suggestions = []
     cur = _DBCONN.cursor()
-    cur.execute("SELECT r.* FROM requests r LEFT JOIN songs s ON r.songid = s.id WHERE s.id IS NULL;")
+    cur.execute(
+        "SELECT r.* FROM requests r LEFT JOIN songs s ON r.songid = s.id WHERE s.id IS NULL;")
     rows = cur.fetchall()
     for row in rows:
-        suggestions.append(f"""requests: #{row["id"]} asks for non-existent song {row["songid"]}""")
+        suggestions.append(
+            f"""requests: #{row["id"]} asks for non-existent song {row["songid"]}""")
     #cur.execute("SELECT max(julianday() - julianday(playtime)) FROM requests;")
     #row = cur.fetchone()
-    #if row[0] > RECENT_MAXAGE:
+    # if row[0] > RECENT_MAXAGE:
     #    suggestions.append(
     #        f"requests: do you need {row[1]}>{RECENT_MAXAGE} days of history?")
     #cur.execute("SELECT sum(1) FROM requests WHERE playtime is null;");
     #row = cur.fetchone()
-    #if row[0] > 32:
+    # if row[0] > 32:
     #    suggestions.append(
     #        f"requests: {row[0]} unfulfilled requests seems excessive")
     return suggestions
@@ -748,9 +774,11 @@ def setsetting(name, value):
     " update the entries in table settings "
     cur = _DBCONN.cursor()
     if not getsetting(name):
-        cur.execute("INSERT INTO settings (name, value) VALUES (?, ?)", (name, value,))
+        cur.execute(
+            "INSERT INTO settings (name, value) VALUES (?, ?)", (name, value,))
     else:
-        cur.execute("UPDATE settings SET value = ? WHERE name = ?", (value, name,))
+        cur.execute("UPDATE settings SET value = ? WHERE name = ?",
+                    (value, name,))
     cur.close()
 
 
@@ -791,39 +819,52 @@ def _checksettingstable():
 #   tag: varchar(63)
 
 def getsongidsfortag(tagstring):
+    " return list of songids for a single known tag "
     cur = _DBCONN.cursor()
-    cur.execute("SELECT songid FROM songtags t LEFT JOIN songs s WHERE s.id IS NOT NULL AND tag = ?", (tagstring,))
+    cur.execute(
+        "SELECT songid FROM songtags t LEFT JOIN songs s WHERE s.id IS NOT NULL AND tag = ?", (tagstring,))
     rows = cur.fetchall()
     if not rows:
-      return []
+        return []
     return list([i[0] for i in rows])
 
+
 def addtag(sid, tagstring):
+    " add a tag to a song "
     cur = _DBCONN.cursor()
-    cur.execute("SELECT songid FROM songtags WHERE songid = ? AND tag = ?", (sid, tagstring,))
+    cur.execute(
+        "SELECT songid FROM songtags WHERE songid = ? AND tag = ?", (sid, tagstring,))
     if cur.fetchone():
-      return True
-    cur.execute("INSERT into songtags (songid, tag) VALUES ?, ?", (sid, tagstring,))
+        return True
+    cur.execute("INSERT into songtags (songid, tag) VALUES ?, ?",
+                (sid, tagstring,))
     if cur.rowcount == 1:
-      return True
+        return True
     return False
 
+
 def rmtag(sid, tagstring):
+    " remove a tag from a song "
     cur = _DBCONN.cursor()
-    cur.execute("DELETE FROM songtags WHERE songid = ? AND tag = ?", (sid, tagstring,))
+    cur.execute("DELETE FROM songtags WHERE songid = ? AND tag = ?",
+                (sid, tagstring,))
     return True
+
 
 def _checktagstable():
     " verify every tag has a song "
     suggestions = []
     cur = _DBCONN.cursor()
-    cur.execute("SELECT t.songid as songid, t.tag as tag, s.id as sid FROM songtags t LEFT JOIN songs s on t.songid = s.id")
+    cur.execute(
+        "SELECT t.songid as songid, t.tag as tag, s.id as sid FROM songtags t LEFT JOIN songs s on t.songid = s.id")
     answer = cur.fetchall()
     for i in answer:
         if i["sid"] is None:
-            suggestions.append(f"""tags: absent song for tag ({i["songid"]}, {i["tag"]})""")
+            suggestions.append(
+                f"""tags: absent song for tag ({i["songid"]}, {i["tag"]})""")
         if " " in i["tag"] or i["tag"] != i["tag"].lower():
-            suggestions.append(f"""tags: tag must be lower nonspaces ({i["songid"]}, {i["tag"]})""")
+            suggestions.append(
+                f"""tags: tag must be lower nonspaces ({i["songid"]}, {i["tag"]})""")
     return suggestions
 
 
@@ -888,7 +929,7 @@ if __name__ == '__main__':
     # requests table
     print("-- test requests ---")
     print(f"requestqueued(): {requestqueued()}")
-    #print(f"getrequest(): {getrequest()}")  # this pops it off the queue
+    # print(f"getrequest(): {getrequest()}")  # this pops it off the queue
 
     print("-- test settings ---")
     print(f"""listsettings(): {listsettings()}""")

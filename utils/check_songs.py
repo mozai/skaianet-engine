@@ -49,9 +49,10 @@ def scrutinize_file(fullpath):
     # "field artist cannot be null" whoops.
     file_metadata.setdefault("artist", "unknown")
     db_metadata = skaianet.getsongbypath(shortpath)
-    db_metadata.pop("autoplay", None)
-    db_metadata.pop("requestable", None)
-    sid = db_metadata.get("id")
+    if db_metadata:
+        db_metadata.pop("autoplay", None)
+        db_metadata.pop("requestable", None)
+        sid = db_metadata.get("id")
     success = True
     if db_metadata and not file_metadata:
         log_warn(f"WARN: song {shortpath} not on disk")
@@ -70,7 +71,7 @@ def scrutinize_file(fullpath):
         # are they different? find out how
         # assume the file is always correct
         dbchanges = {}
-        for k in ("title", "artist", "album", "length", "trackno", "release_date",):
+        for k in ("title", "artist", "album", "length", "trackno", "release_date", "website",):
             if file_metadata.get(k) != db_metadata.get(k):
                 dbchanges[k] = file_metadata.get(k)
         if dbchanges:
@@ -108,6 +109,7 @@ def fileswalk(startpath=skaianet.config["library.paths"]["music"]):
             except Exception as err:
                 log_warn(f"EROR: {fullpath}: {err}")
                 badfiles += 1
+                raise
                 continue
             if success:
                 goodfiles += 1

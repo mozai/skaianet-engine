@@ -13,7 +13,7 @@ MESSAGES = [
     'AT: mUSIC WE HOPE YOU uHH ENJOY }:)',
     'TA: tune2 two bee grooviing',
     'CG: LISTEN WITH YOUR SKULLHOLES O:B',
-    'AC: :3 << *plays mewsic for you*',
+    'AC: :33 < *plays mewsic fur you*',
     'GA: Please Enjoy Responsibly',
     'GC: MUS1C W1TH GOOD T4ST3 >;]',
     'AG: you know my songs are the 8est :::;)',
